@@ -1,0 +1,53 @@
+{
+  "name": "cli-provider-router",
+  "version": "0.1.0",
+  "description": "Route any AI CLI (claude/codex/opencode) to a different upstream provider per invocation — by injecting spawn env. Includes Responses↔Chat protocol proxy for codex→chat-only providers. Library + CLI.",
+  "main": "lib/index.js",
+  "bin": {
+    "cpr": "cli/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "lint": "node --check lib/index.js cli/index.js"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "cli",
+    "provider",
+    "router",
+    "anthropic",
+    "deepseek",
+    "cc-switch",
+    "proxy",
+    "agent"
+  ],
+  "license": "MIT",
+  "author": "lsjwzh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lsjwzh/cli-provider-router.git"
+  },
+  "homepage": "https://github.com/lsjwzh/cli-provider-router#readme",
+  "bugs": {
+    "url": "https://github.com/lsjwzh/cli-provider-router/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "express": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    }
+  },
+  "files": [
+    "lib",
+    "cli",
+    "defaults.json",
+    "README.md",
+    "LICENSE"
+  ]
+}
