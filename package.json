@@ -7,7 +7,7 @@
     "cpr": "cli/index.js"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "lint": "node --check lib/index.js cli/index.js"
   },
   "keywords": [
