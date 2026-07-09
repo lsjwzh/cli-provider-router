@@ -67,27 +67,29 @@ const store = cpr.createStore({
   ccSwitchDb: '~/.cc-switch/cc-switch.db',           // import source
 });
 
-store.list('claude');                    // -> [{ id, name, baseUrl, model, modelOptions, ... }]
-store.get('claude', id);
-store.summary('claude', id);
-store.create({ appType: 'claude', name, baseUrl, authToken, model, models });
-store.update('claude', id, { ... });
-store.delete('claude', id);
-store.importFromCcSwitch();
+store.listProviders('claude');           // -> [{ id, name, appType, ... }]
+store.getProvider('claude', id);          // -> full provider (with settingsConfig)
+store.getProviderSummary('claude', id);   // -> UI-friendly { baseUrl, model, tokenMask, modelOptions, aliasOnly, aliasMap }
+store.createProvider({ appType: 'claude', name, baseUrl, authToken, model, models });
+store.updateProvider('claude', id, { ... });
+store.deleteProvider('claude', id);
+store.importFromCcSwitch();               // -> { imported, updated, total }
 
 // The core: compute the env to inject when spawning a CLI for a provider.
-const r = cpr.buildChildEnv(process.env, { cli: 'claude', providerId: 'xxx', model: 'sonnet' });
+// `store` is passed in so spawn-env can look the provider up; `model` is an
+// optional per-invocation override.
+const r = cpr.buildChildEnv(process.env, { cli: 'claude', providerId: 'xxx', store });
 // -> { env, skipDefaultModel, aliasOnly, providerModel, providerModels, providerName, codexHome }
 // spawn('claude', args, { env: { ...process.env, ...r.env } })
 
 // Optional: mount the protocol proxies on an express-compatible app.
-cpr.mountClaudeProxy(app, { getProvider: (t, id) => store.get(t, id), onUsage: (e) => {} });
-cpr.mountCodexProxy(app, { getProvider: (t, id) => store.get(t, id), getPort: () => 3000 });
+cpr.mountClaudeProxy(app, { getProvider: (t, id) => store.getProvider(t, id), onUsage: (e) => {} });
+cpr.mountCodexProxy(app, { getProvider: (t, id) => store.getProvider(t, id), getPort: () => 3000 });
 ```
 
 ### Design notes
 
-- **No session concept in the library.** `buildChildEnv` takes `{ cli, providerId, model? }` — it doesn't know about your session model.
+- **No session concept in the library.** `buildChildEnv` takes `{ cli, providerId, store }` — it doesn't know about your session object, just the two fields it needs.
 - **No usage storage.** Proxies emit an `onUsage(event)` hook; the host tallies tokens however it likes. The library never reads or writes a `token_usage.json`.
 - **express is an optional peer dep.** `mountXxxProxy(app, …)` accepts any express-compatible app; `createHandler()` is also exported for custom routing.
 - **Configurable paths.** `createStore({ dataFile, ccSwitchDb })` — nothing is hardcoded to a host's directory.
