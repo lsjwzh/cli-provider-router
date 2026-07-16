@@ -19,13 +19,16 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 
 const cpr = require('../lib/index');
+const { createCprPaths, ensureCprPaths, DEFAULT_PROXY_PORT } = require('../lib/paths');
+const { createServiceController } = require('../lib/service');
 
-const DATA_FILE = process.env.CPR_DATA_FILE
-  || path.join(os.homedir(), '.cli-provider-router', 'providers.json');
+const PATHS = ensureCprPaths(createCprPaths());
+const DATA_FILE = process.env.CPR_DATA_FILE || PATHS.providersFile;
 const CC_DB = process.env.CPR_CC_SWITCH_DB || undefined;
+const PROXY_RUNNER = path.join(__dirname, 'proxy-server.js');
 
 function store() {
-  return cpr.createStore({ dataFile: DATA_FILE, ccSwitchDb: CC_DB });
+  return cpr.createStore({ dataFile: DATA_FILE, ccSwitchDb: CC_DB, paths: PATHS });
 }
 
 // ── tiny arg parser ──────────────────────────────────────────────────────────
@@ -204,7 +207,8 @@ function cmdDoctor() {
   const ccDb = cpr.resolveCcDb(CC_DB);
   console.log(`  cc-switch db:    ${ccDb} ${cpr.ccSwitchAvailable(ccDb) ? C.green('(found)') : C.dim('(not found)')}`);
   // codex homes
-  console.log(`  codex homes:     ${cpr.CODEX_HOMES_DIR}`);
+  console.log(`  CPR home:        ${PATHS.home}`);
+  console.log(`  codex homes:     ${PATHS.codexHomesDir}`);
   // CLIs on PATH
   for (const bin of ['claude', 'codex']) {
     const found = onPath(bin);
@@ -225,28 +229,53 @@ function onPath(bin) {
   return null;
 }
 
-function cmdProxy(args) {
-  const sub = args._[0];
-  // The proxy needs express + a running HTTP server. We spawn a small embedded
-  // server script so `cpr proxy start` is a one-liner for CLI users. It is
-  // optional (peer dep); library hosts mount the proxy themselves.
-  const proxyRunner = path.join(__dirname, 'proxy-server.js');
-  if (sub === 'start') {
-    const port = args.flags.port || '4567';
-    try { require.resolve('express'); }
-    catch (_) { die('express is required for `cpr proxy start`.\n  Install it: npm install -g express   (or run your own host with mountCodexProxy).'); }
-    const child = spawn(process.execPath, [proxyRunner, '--port', String(port)], {
-      env: { ...process.env, CPR_DATA_FILE: DATA_FILE, ...(CC_DB ? { CPR_CC_SWITCH_DB: CC_DB } : {}) },
-      stdio: 'inherit',
-    });
-    child.on('exit', (code) => process.exit(code == null ? 0 : code));
-    child.on('error', (e) => die('failed to start proxy: ' + e.message));
-  } else if (sub === 'status' || sub === 'stop') {
-    console.log(C.dim('`cpr proxy start` runs in the foreground; stop it with Ctrl-C.'));
-    console.log(C.dim('For a background/daemon proxy, run it under your own process manager.'));
-  } else {
-    die('usage: cpr proxy start [--port 4567]');
+function checkExpress() {
+  try { require.resolve('express'); }
+  catch (_) { die('express is required for the CPR service. Install it beside cli-provider-router and retry.'); }
+}
+
+async function cmdService(command, args) {
+  if (command === 'serve' || command === 'start' || command === 'restart') checkExpress();
+  const requestedPort = args.flags.port || process.env.CPR_PORT || null;
+  const port = Number(requestedPort || DEFAULT_PROXY_PORT);
+  if (command === 'serve') {
+    const { startServer } = require('./proxy-server');
+    startServer({ port, paths: PATHS, dataFile: DATA_FILE, ccSwitchDb: CC_DB });
+    return;
   }
+  const controller = createServiceController({ paths: PATHS, runner: PROXY_RUNNER, port: requestedPort ? port : undefined });
+  if (command === 'start') {
+    const result = await controller.start({ port, dataFile: DATA_FILE });
+    console.log(result.alreadyRunning
+      ? C.yellow(`service already running (pid ${result.pid}, port ${result.port})`)
+      : C.green(`✓ service started (pid ${result.pid}, port ${result.port})`));
+    return;
+  }
+  if (command === 'status') {
+    const result = await controller.status();
+    if (result.running) console.log(C.green('running') + `  pid ${result.pid}  http://127.0.0.1:${result.port}`);
+    else if (result.processRunning) console.log(C.yellow('unhealthy') + `  pid ${result.pid}  port ${result.port}`);
+    else console.log(C.dim('stopped'));
+    if (!result.running) process.exitCode = 1;
+    return;
+  }
+  if (command === 'stop') {
+    const result = await controller.stop();
+    console.log(result.alreadyStopped ? C.dim('service already stopped') : C.green(`✓ service stopped (pid ${result.pid})`));
+    return;
+  }
+  if (command === 'restart') {
+    const result = await controller.restart({ ...(requestedPort ? { port } : {}), dataFile: DATA_FILE });
+    console.log(C.green(`✓ service restarted (pid ${result.pid}, port ${result.port})`));
+    return;
+  }
+  die('usage: cpr serve|start|status|stop|restart [--port 4567]');
+}
+
+function cmdProxy(args) {
+  const sub = args._.shift();
+  if (!['start', 'status', 'stop', 'restart'].includes(sub)) die('usage: cpr proxy start|status|stop|restart [--port 4567]');
+  return cmdService(sub, args);
 }
 
 // ── help ─────────────────────────────────────────────────────────────────────
@@ -265,19 +294,22 @@ ${C.bold('Route a CLI')}
                                        e.g. cpr use deepseek -- claude -p "hi"
                                             cpr use xfyun -- codex exec "..."
 
-${C.bold('Protocol proxy')} (codex → chat-only upstream)
-  cpr proxy start [--port 4567]
+${C.bold('Standalone service')}
+  cpr serve [--port 4567]              foreground
+  cpr start [--port 4567]              background
+  cpr status | stop | restart
+  cpr proxy <action>                    compatibility alias
 
 ${C.bold('Other')}
   cpr doctor                         environment diagnostics
   cpr --version
 
 Store:      ${DATA_FILE}
-Override:   CPR_DATA_FILE, CPR_CC_SWITCH_DB`);
+Override:   CPR_HOME, CPR_DATA_FILE, CPR_CC_SWITCH_DB, CPR_PORT`);
 }
 
 // ── dispatch ─────────────────────────────────────────────────────────────────
-function main() {
+async function main() {
   const argv = process.argv.slice(2);
   if (!argv.length || argv[0] === 'help' || argv[0] === '--help' || argv[0] === '-h') return help();
   if (argv[0] === '--version' || argv[0] === '-v') {
@@ -294,9 +326,10 @@ function main() {
     case 'import': return cmdImport(args);
     case 'use': return cmdUse(args);
     case 'doctor': return cmdDoctor(args);
+    case 'serve': case 'start': case 'status': case 'stop': case 'restart': return cmdService(cmd, args);
     case 'proxy': return cmdProxy(args);
     default: die(`unknown command: ${cmd}\n  run \`cpr help\` for usage.`);
   }
 }
 
-main();
+main().catch(error => die(error && error.message ? error.message : String(error)));
