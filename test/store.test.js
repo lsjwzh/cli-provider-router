@@ -11,7 +11,7 @@ const cpr = require('../lib/index');
 function tmpStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-test-'));
   const dataFile = path.join(dir, 'providers.json');
-  return { store: cpr.createStore({ dataFile }), dir, dataFile };
+  return { store: cpr.createStore({ dataFile, cprHome: dir }), dir, dataFile };
 }
 
 test('createStore: CRUD round-trip for a claude provider', () => {
@@ -65,6 +65,7 @@ test('buildChildEnv: codex gets a per-provider CODEX_HOME', () => {
   const r = cpr.buildChildEnv({}, { cli: 'codex', providerId: id, store });
   assert.ok(r.env.CODEX_HOME, 'CODEX_HOME is set');
   assert.ok(r.env.CODEX_HOME.includes(id), 'CODEX_HOME is scoped to the provider id');
+  assert.ok(r.env.CODEX_HOME.startsWith(dir), 'CODEX_HOME honors the injected CPR home');
   assert.equal(r.codexHome, r.env.CODEX_HOME);
   fs.rmSync(dir, { recursive: true, force: true });
 });

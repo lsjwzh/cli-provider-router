@@ -235,7 +235,7 @@ function checkExpress() {
 }
 
 async function cmdService(command, args) {
-  checkExpress();
+  if (command === 'serve' || command === 'start' || command === 'restart') checkExpress();
   const requestedPort = args.flags.port || process.env.CPR_PORT || null;
   const port = Number(requestedPort || DEFAULT_PROXY_PORT);
   if (command === 'serve') {
