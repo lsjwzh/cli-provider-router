@@ -17,7 +17,10 @@ Include the affected commit/version, operating system, impact, and a redacted re
 - CPR receives provider credentials and may observe model traffic. Logs must contain metadata only unless the user explicitly enables a short-lived diagnostic capture.
 - Imported CC-Switch data is copied into CPR's own store. The current `cpr import` operation is read-only.
 - Reversible CC-Switch takeover is a separate opt-in write feature. It uses a verified backup, transaction, allowlist of fields, snapshot-only gateway, loop prevention, and conflict-aware restore. See `docs/ccswitch-safety.md`.
-- Uninstall scripts refuse removal when the CPR integration state reports an active takeover, preventing removal of the only local proxy before endpoints are restored.
+- Direct native CLI takeover is another separate opt-in write feature and works without CC-Switch. It snapshots `~/.claude/settings.json`, `~/.codex/config.toml`, and managed Codex agent route files before changing them. It never modifies Codex `auth.json`. See `docs/direct-cli-config.md`.
+- Direct CLI snapshots can contain secrets that already existed in native configuration. `CPR_HOME/direct-cli-config` therefore uses private directory/file permissions and must be handled as secret-bearing data.
+- Normal restore refuses configuration drift. `--force` may intentionally discard edits made after apply and must only be used after a private manual backup and snapshot-ID review.
+- Uninstall scripts refuse removal or purge when either CPR takeover is active, preventing removal of the only local proxy before CC-Switch endpoints or native CLI files are restored. They never perform an automatic restore.
 
 ## Credential hygiene
 

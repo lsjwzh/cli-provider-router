@@ -4,7 +4,7 @@ Route Claude Code and Codex to different upstream providers without changing the
 
 [简体中文](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
-> Project status: **early development**. Source installation is supported; npm is not published yet. Provider routing, the dual-port managed service, local Web console, reversible CC-Switch takeover, route profiles, and usage ledger are implemented and covered by integration tests.
+> Project status: **early development**. Source installation is supported; npm is not published yet. Provider routing, the dual-port managed service, local Web console, reversible CC-Switch takeover, reversible native CLI configuration takeover, route profiles, and usage ledger are implemented and covered by tests.
 
 ## Why CPR
 
@@ -23,21 +23,26 @@ Route Claude Code and Codex to different upstream providers without changing the
 | Per-invocation Claude/Codex routing | Available | `cpr use` |
 | Claude and Codex protocol proxy core | Available | Library API and managed service |
 | Reversible CC-Switch endpoint takeover | Available | Web preview/snapshot/apply/restore + gateway |
+| Reversible native Claude/Codex config takeover | Available | `cpr cli-config` and dedicated Web page |
 | Main/sub-agent route editor | Available | Web console |
 | Persistent usage statistics | Available | `cpr usage` and Web console |
 | Background service lifecycle | Available | `cpr serve/start/status/stop/restart` |
 
-## CC-Switch: import, MultiCC sync, and CPR takeover are different
+## Four integrations that must remain distinct
 
 These operations must not be treated as aliases:
 
 - **CPR read-only import (available):** `cpr import` copies provider data from CC-Switch into CPR's own store. It does not write to CC-Switch.
 - **MultiCC CC-Switch sync:** a MultiCC-owned feature that reads/copies CC-Switch provider data for MultiCC. MultiCC keeps its own proxy and session behavior. CPR does not replace or silently change this workflow.
 - **CPR reversible takeover (available):** a standalone CPR feature. It creates and verifies a local snapshot of the original CC-Switch endpoints, transactionally replaces selected endpoints with CPR's local proxy URLs, and restores only the managed endpoint fields. It is an opt-in write operation with preview, conflict detection, recovery controls, and a fail-closed streaming gateway whose upstream comes only from the active immutable snapshot map.
+- **CPR direct native CLI takeover (available):** a separate standalone feature for machines with or without CC-Switch. It snapshots the user's native Claude/Codex configuration, previews and applies local CPR routes, detects drift, and restores the exact original files. It does not read or write the CC-Switch database.
 
 The takeover safety contract and recovery behavior are documented in [docs/ccswitch-safety.md](docs/ccswitch-safety.md). Read-only import remains a separate operation and never activates takeover.
+Native CLI ownership, managed files, and force-restore risks are documented in [docs/direct-cli-config.md](docs/direct-cli-config.md). None of these four operations implicitly activates another.
 
 ## Installation
+
+CPR ships project-owned install, upgrade, and uninstall scripts. They install CPR as an independent application and never place CPR data inside MultiCC or reuse MultiCC's worktree/data directories.
 
 ### Current supported method: fixed source checkout
 
@@ -77,6 +82,8 @@ Add the command-shim directory to `PATH` if it is not already present. `CPR_BIN_
 
 ### Upgrade from another fixed checkout
 
+Upgrade is a separate, explicit operation; the installer never silently follows a branch or updates itself.
+
 ```bash
 cd cli-provider-router
 git fetch --tags origin
@@ -108,7 +115,7 @@ Upgrade creates a timestamped backup under the install root, installs side-by-si
 .\scripts\uninstall.ps1 -Purge
 ```
 
-Uninstall preserves `CPR_HOME` unless purge is explicitly requested. It refuses to uninstall while the CPR CC-Switch integration state says takeover is active; restore CC-Switch from the Web console first.
+Uninstall preserves `CPR_HOME` unless purge is explicitly requested. Both normal uninstall and purge refuse to continue while CC-Switch takeover or native CLI takeover is active. Restore from the corresponding Web page or `cpr cli-config restore` first. The scripts never auto-restore or delete native CLI configuration.
 
 ## Quick start (available commands)
 
@@ -139,9 +146,23 @@ cpr serve --port 4567 --web-port 4568
 cpr doctor
 ```
 
+### Directly manage native CLI configuration (CC-Switch not required)
+
+```bash
+cpr start
+cpr cli-config detect --cli claude
+cpr cli-config snapshot --cli claude --profile <profile-id> --json
+cpr cli-config preview --cli claude --profile <profile-id>
+cpr cli-config apply --cli claude --profile <profile-id> --yes
+cpr cli-config status --cli claude
+cpr cli-config restore --cli claude --yes
+```
+
+Use `--cli codex` for Codex. This workflow backs up before writing, preserves unrelated configuration, and blocks a normal restore after drift. See [the direct CLI configuration guide](docs/direct-cli-config.md) before using `--force`.
+
 `cpr proxy start/status/stop/restart` remains a compatibility alias for the managed service commands. A normal stop shuts down both listeners in the same process.
 
-The Web console provides Dashboard, Providers, CC-Switch preview/snapshot/apply/restore, Agent Routing, Usage, and Settings. Both listeners bind to `127.0.0.1`; the Web port defaults to proxy port + 1.
+The Web console provides Dashboard, Providers, a CC-Switch takeover page, a separate CLI Config page for native Claude/Codex detect/snapshot/preview/apply/status/restore, Agent Routing, Usage, and Settings. Both listeners bind to `127.0.0.1`; the Web port defaults to proxy port + 1.
 
 ## Library API
 
@@ -192,6 +213,7 @@ The standalone service persists normalized usage events and exposes CLI/Web quer
 - The standalone service is designed to bind to `127.0.0.1` by default. Remote exposure will require explicit authentication and TLS termination.
 - Secrets must never appear in bug reports, screenshots, logs, or committed fixtures.
 - CC-Switch takeover uses a verified SQLite snapshot and field-level restore, not an uncoordinated file copy.
+- Native CLI snapshots and active state live only under `CPR_HOME/direct-cli-config`; CPR never changes Codex `auth.json` for direct takeover.
 
 Read [docs/data-and-security.md](docs/data-and-security.md) and [SECURITY.md](SECURITY.md) before operating on production credentials.
 

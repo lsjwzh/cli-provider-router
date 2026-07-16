@@ -12,6 +12,7 @@ Treat these as secrets:
 
 - `providers.json` and generated Codex authentication/config files.
 - CC-Switch database snapshots and integration manifests containing original URLs.
+- Direct CLI configuration snapshots under `CPR_HOME/direct-cli-config`; they may contain credentials that were already present in native configuration.
 - OAuth tokens and API keys.
 - Diagnostic captures and model request/response bodies.
 
@@ -35,6 +36,8 @@ Upgrade scripts back up CPR data metadata before switching application versions 
 
 CC-Switch takeover snapshots require SQLite's backup API and verification; a plain file copy is not safe for a live WAL database. See `docs/ccswitch-safety.md`.
 
+Direct CLI snapshots are exact file records used to restore native Claude/Codex configuration. They are separate from CC-Switch snapshots and never include Codex `auth.json`. See `docs/direct-cli-config.md`.
+
 ## Deletion
 
-Normal uninstall removes application files and the command shim but preserves `CPR_HOME`. Purge must be explicitly requested. Purge is refused while CC-Switch takeover is active, because removing the proxy first could strand CC-Switch on localhost endpoints.
+Normal uninstall removes application files and the command shim but preserves `CPR_HOME`. Purge must be explicitly requested. Both operations are refused while CC-Switch or direct CLI takeover is active, because removing the proxy first could strand CC-Switch endpoints or native CLIs on localhost routes. Uninstall never performs an automatic restore.

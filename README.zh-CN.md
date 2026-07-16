@@ -4,7 +4,7 @@
 
 [English](README.md) · [架构](docs/architecture.md) · [安全策略](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
 
-> 项目状态：**早期开发阶段**。当前支持源码安装，npm 尚未发布。Provider 路由、双端口托管服务、本地 Web 控制台、可逆 CC-Switch 接管、路由配置和用量账本均已实现并有集成测试。
+> 项目状态：**早期开发阶段**。当前支持源码安装，npm 尚未发布。Provider 路由、双端口托管服务、本地 Web 控制台、可逆 CC-Switch 接管、可逆原生 CLI 配置接管、路由配置和用量账本均已实现并有测试。
 
 ## 为什么需要 CPR
 
@@ -23,21 +23,26 @@
 | Claude/Codex 单次调用路由 | 已可用 | `cpr use` |
 | Claude/Codex 协议代理核心 | 已可用 | 库 API 和托管服务 |
 | 可逆 CC-Switch endpoint 接管 | 已可用 | Web 预览/快照/应用/恢复 + gateway |
+| 可逆 Claude/Codex 原生配置接管 | 已可用 | `cpr cli-config` 和独立 Web 页面 |
 | 主/子 Agent 路由编辑器 | 已可用 | Web 控制台 |
 | 持久化用量统计 | 已可用 | `cpr usage` 和 Web 控制台 |
 | 后台服务生命周期 | 已可用 | `cpr serve/start/status/stop/restart` |
 
-## 务必区分三种 CC-Switch 功能
+## 务必区分四种能力
 
 下面三件事不是同一个功能，也不会互相隐式触发：
 
 - **CPR 只读导入（已可用）**：`cpr import` 把 CC-Switch Provider 数据复制到 CPR 自己的 store，绝不回写 CC-Switch。
 - **MultiCC 的 CC-Switch 同步**：由 MultiCC 自己负责，只读取/复制 CC-Switch 数据供 MultiCC 使用；MultiCC 继续采用自己的默认代理和 Session 逻辑。CPR 不替换、不暗改这条链路。
 - **CPR 可逆接管（已可用）**：CPR 的独立功能。先在 CPR 本地生成并校验 CC-Switch 原始 endpoint 快照，再由事务把选中的 endpoint 改为 CPR 本地代理 URL；恢复时只还原受管理字段。流式 gateway 只从 active state 对应的不可变快照读取上游，并对本机回环和异常状态 fail-closed。
+- **CPR 原生 CLI 配置可逆接管（已可用）**：独立于 CC-Switch；没有 CC-Switch 也能使用。它先快照用户的 Claude/Codex 原生配置，再预览并写入 CPR 本地路由，持续检测漂移，最后精确恢复原文件。它不读写 CC-Switch 数据库。
 
 完整安全约束见 [docs/ccswitch-safety.md](docs/ccswitch-safety.md)。只读导入仍是独立操作，绝不会自动启用接管。
+原生配置的文件边界、恢复与 `--force` 风险见 [docs/direct-cli-config.md](docs/direct-cli-config.md)。上述四项能力不会互相隐式启用。
 
 ## 安装
+
+CPR 自带独立的安装、升级和卸载脚本。它作为独立应用安装，绝不会把 CPR 数据放进 MultiCC 仓库、worktree 或数据目录，也不会复用它们。
 
 ### 当前支持方式：从固定源码版本安装
 
@@ -77,7 +82,7 @@ $Version = node -p "require('./package.json').version"
 
 ## 升级
 
-升级同样要求固定、已审阅的源码版本，不会自动追随 `latest`：
+升级是独立、显式的操作；安装器不会暗中跟随分支或自升级。升级同样要求固定、已审阅的源码版本，不会自动追随 `latest`：
 
 ```bash
 git fetch --tags origin
@@ -107,7 +112,7 @@ $Version = node -p "require('./package.json').version"
 .\scripts\uninstall.ps1 -Purge # 明确删除数据
 ```
 
-默认保留 `CPR_HOME`。如果 CPR 集成状态显示 CC-Switch 正处于接管状态，脚本会拒绝卸载，必须先从 Web 控制台恢复 CC-Switch。
+默认保留 `CPR_HOME`。无论普通卸载还是 purge，只要 CC-Switch 接管或原生 CLI 配置接管仍处于活动状态，脚本都会拒绝；必须先从对应 Web 页面或 `cpr cli-config restore` 恢复。卸载脚本绝不会自动恢复或删除用户原生 CLI 配置。
 
 ## 快速开始（当前可用命令）
 
@@ -127,7 +132,21 @@ cpr serve --port 4567 --web-port 4568  # 前台模式
 cpr doctor
 ```
 
-Web 控制台默认位于 `http://127.0.0.1:4568`，包含 Dashboard、Provider、CC-Switch 预览/快照/应用/恢复、Agent Routing、Usage 和 Settings。`cpr proxy start/status/stop/restart` 是托管服务命令的兼容别名，停止时两个监听端口会同时关闭。
+### 无需 CC-Switch，直接接管原生 CLI 配置
+
+```bash
+cpr start
+cpr cli-config detect --cli claude
+cpr cli-config snapshot --cli claude --profile <配置-id> --json
+cpr cli-config preview --cli claude --profile <配置-id>
+cpr cli-config apply --cli claude --profile <配置-id> --yes
+cpr cli-config status --cli claude
+cpr cli-config restore --cli claude --yes
+```
+
+Codex 使用 `--cli codex`。该流程先备份再写入，保留无关设置，并在发生漂移后阻止普通恢复。使用 `--force` 前务必阅读[原生 CLI 配置接管指南](docs/direct-cli-config.md)。
+
+Web 控制台默认位于 `http://127.0.0.1:4568`，包含 Dashboard、Provider、CC-Switch 接管页、独立的原生 CLI Config 检测/快照/预览/应用/状态/恢复页、Agent Routing、Usage 和 Settings。`cpr proxy start/status/stop/restart` 是托管服务命令的兼容别名，停止时两个监听端口会同时关闭。
 
 ## 子 Agent 路由和统计边界
 
@@ -145,6 +164,7 @@ standalone 服务会持久化规范化用量事件，并通过 CLI/Web 查询。
 - 独立服务设计为默认只监听 `127.0.0.1`；远程暴露必须显式配置鉴权和 TLS。
 - 不要把 token 写入 issue、日志、截图或测试 fixture。
 - CC-Switch 接管使用经过校验的 SQLite 快照和字段级恢复，不采用无协调的普通文件复制。
+- 原生 CLI 的快照和活动状态只保存在 `CPR_HOME/direct-cli-config`；直接接管绝不修改 Codex `auth.json`。
 
 运行生产凭据前请阅读 [docs/data-and-security.md](docs/data-and-security.md) 和 [SECURITY.md](SECURITY.md)。
 
