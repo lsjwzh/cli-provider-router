@@ -53,6 +53,12 @@ async function startServer(options = {}) {
   const routeProfiles = options.routeProfiles || cpr.createRouteProfileStore({ paths });
   const usageLedger = options.usageLedger || cpr.createUsageLedger({ paths });
   const settings = options.settings || cpr.createSettingsStore({ paths, defaults: { proxyPort: port, webPort } });
+  const directCliConfig = options.directCliConfig || cpr.createDirectCliConfigManager({
+    paths,
+    store,
+    profiles: routeProfiles,
+    proxyBaseUrl: `http://127.0.0.1:${port}`,
+  });
   const adminToken = options.adminToken || readOrCreateAdminToken(paths.adminTokenFile);
   usageLedger.prune();
   const startedAt = Date.now();
@@ -91,6 +97,7 @@ async function startServer(options = {}) {
       proxyBaseUrl: `http://127.0.0.1:${port}`,
       usageLedger,
       settings,
+      directCliConfig,
     });
     serviceReady = true;
   } catch (error) {
@@ -142,7 +149,7 @@ async function startServer(options = {}) {
     });
   }
 
-  return { proxyApp, proxyServer, web, paths, port, webPort, adminToken, state, close, store, routeProfiles, usageLedger, settings };
+  return { proxyApp, proxyServer, web, paths, port, webPort, adminToken, state, close, store, routeProfiles, usageLedger, settings, directCliConfig };
 }
 
 if (require.main === module) {

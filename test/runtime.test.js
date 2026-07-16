@@ -158,6 +158,27 @@ test('CLI exposes the managed service lifecycle', async () => {
   }
 });
 
+test('CLI exposes read-only native config detect/status without CC-Switch', () => {
+  const home = temporaryHome();
+  const nativeHome = temporaryHome();
+  const cli = path.join(__dirname, '..', 'cli', 'index.js');
+  const env = { ...process.env, CPR_HOME: home, HOME: nativeHome, CPR_CC_SWITCH_DB: path.join(home, 'missing-cc-switch.db') };
+  try {
+    const detected = JSON.parse(execFileSync(process.execPath, [cli, 'cli-config', 'detect', '--cli', 'claude', '--json'], { env, encoding: 'utf8' }));
+    assert.strictEqual(detected[0].cli, 'claude');
+    assert.strictEqual(detected[0].exists, false);
+    assert.strictEqual(detected[0].active, false);
+    const status = JSON.parse(execFileSync(process.execPath, [cli, 'cli-config', 'status', '--cli', 'codex', '--json'], { env, encoding: 'utf8' }));
+    assert.strictEqual(status.cli, 'codex');
+    assert.strictEqual(status.active, false);
+    assert.strictEqual(fs.existsSync(path.join(nativeHome, '.claude', 'settings.json')), false);
+    assert.strictEqual(fs.existsSync(path.join(nativeHome, '.codex', 'config.toml')), false);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(nativeHome, { recursive: true, force: true });
+  }
+});
+
 test('managed service fails fast when either proxy or Web port is occupied', async t => {
   const runner = path.join(__dirname, '..', 'cli', 'proxy-server.js');
   for (const blocked of ['proxy', 'web']) {
