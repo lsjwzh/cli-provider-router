@@ -61,6 +61,7 @@ async function startServer(options = {}) {
     catch (error) { console.error(`[cli-provider-router] usage ledger write failed: ${error.message}`); }
   };
   const getProvider = (type, id) => store.getProvider(type, id);
+  let serviceReady = false;
 
   const proxyApp = express();
   proxyApp.disable('x-powered-by');
@@ -68,8 +69,8 @@ async function startServer(options = {}) {
   // this mount below express.json() or another body-consuming middleware.
   cpr.mountCcSwitchGateway(proxyApp, { home: paths.home });
   proxyApp.use(express.json({ limit: '25mb' }));
-  proxyApp.get('/health', (_req, res) => res.json({
-    ok: true, product: 'cli-provider-router-proxy', pid: process.pid, port, webPort,
+  proxyApp.get('/health', (_req, res) => res.status(serviceReady ? 200 : 503).json({
+    ok: serviceReady, product: 'cli-provider-router-proxy', pid: process.pid, port, webPort,
     webUrl: `http://127.0.0.1:${webPort}`, adminTokenFile: paths.adminTokenFile,
     home: paths.home, startedAt,
   }));
@@ -91,6 +92,7 @@ async function startServer(options = {}) {
       usageLedger,
       settings,
     });
+    serviceReady = true;
   } catch (error) {
     await closeHttp(proxyServer).catch(() => {});
     throw error;

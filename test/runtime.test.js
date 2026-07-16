@@ -23,6 +23,25 @@ function freePort() {
   });
 }
 
+function occupyPort(port) {
+  const server = net.createServer();
+  const sockets = new Set();
+  server.on('connection', socket => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+  server.testSockets = sockets;
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => { server.removeListener('error', reject); resolve(server); });
+  });
+}
+
+function closeServer(server) {
+  for (const socket of server.testSockets || []) socket.destroy();
+  return new Promise(resolve => server.close(() => resolve()));
+}
+
 test('CPR_HOME paths and atomic JSON are isolated and private', () => {
   const home = temporaryHome();
   try {
@@ -136,5 +155,36 @@ test('CLI exposes the managed service lifecycle', async () => {
   } finally {
     await cleanup.stop({ timeoutMs: 8000 }).catch(() => {});
     fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('managed service fails fast when either proxy or Web port is occupied', async t => {
+  const runner = path.join(__dirname, '..', 'cli', 'proxy-server.js');
+  for (const blocked of ['proxy', 'web']) {
+    const home = temporaryHome();
+    const paths = cpr.ensureCprPaths(cpr.createCprPaths({ home }));
+    const proxyPort = await freePort();
+    let webPort = await freePort();
+    while (webPort === proxyPort) webPort = await freePort();
+    const blockedPort = blocked === 'proxy' ? proxyPort : webPort;
+    const blocker = await occupyPort(blockedPort);
+    const controller = cpr.createServiceController({ paths, runner, port: proxyPort, webPort });
+    const startedAt = Date.now();
+    try {
+      await assert.rejects(
+        controller.start({ port: proxyPort, webPort, timeoutMs: 8000 }),
+        /service failed to become healthy/,
+        `${blocked} port conflict should reject start`,
+      );
+      assert.ok(Date.now() - startedAt < 3000, `${blocked} port conflict should fail before the normal startup timeout`);
+      assert.strictEqual(blocker.listening, true, 'CPR must not stop or replace the process owning the port');
+      const status = await controller.status();
+      assert.strictEqual(status.running, false);
+      assert.strictEqual(status.processRunning, false);
+    } finally {
+      await controller.stop({ timeoutMs: 1000 }).catch(() => {});
+      await closeServer(blocker);
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   }
 });
