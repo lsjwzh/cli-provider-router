@@ -87,7 +87,7 @@ test('standalone Web serves six sections and enforces loopback, Origin and admin
 
 test('CC-Switch dangerous writes require preview-oriented confirmation and route roles are constrained', async t => {
   const deps = dependencies();
-  const usageLedger = { query: async filters => [{ role: filters.role, inputTokens: 12 }], summary: async () => ({ inputTokens: 12 }) };
+  const usageLedger = { query: async filters => [{ role: filters.role, protocol: 'openai-responses', tokens: { input: 12, output: 3, total: 15 } }], rollup: async () => [{ inputTokens: 12 }] };
   const web = await createWebServer({ ...deps, usageLedger, ccSwitchOptions: { dbPath: '/fixture/cc-switch.db', proxyBaseUrl: 'http://127.0.0.1:4567' } });
   t.after(() => web.close());
   const auth = { 'x-cpr-admin-token': web.adminToken };
@@ -113,5 +113,7 @@ test('CC-Switch dangerous writes require preview-oriented confirmation and route
   } });
   assert.equal(invalid.status, 400);
   const usage = await request(web.port, '/api/usage?role=worker', { headers: auth });
-  assert.deepEqual(usage.json(), { available: true, data: [{ role: 'worker', inputTokens: 12 }] });
+  assert.deepEqual(usage.json(), { available: true, data: [{ role: 'worker', protocol: 'openai-responses', tokens: { input: 12, output: 3, total: 15 } }] });
+  const summary = await request(web.port, '/api/usage/summary', { headers: auth });
+  assert.deepEqual(summary.json(), { available: true, data: [{ inputTokens: 12 }] });
 });
