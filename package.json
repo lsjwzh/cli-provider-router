@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "lint": "node --check lib/index.js cli/index.js"
+    "lint": "find lib cli test -name '*.js' -type f -exec node --check {} +"
   },
   "keywords": [
     "claude-code",
@@ -35,6 +35,12 @@
   "engines": {
     "node": ">=18"
   },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.10.0"
+  },
   "peerDependencies": {
     "express": ">=4"
   },
@@ -49,5 +55,8 @@
     "defaults.json",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "express": "^4.22.2"
+  }
 }
