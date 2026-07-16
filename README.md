@@ -16,6 +16,7 @@ Library + CLI (`cpr`).
 
 - **Per-call routing**: wrap any CLI invocation with a provider name, get the right env injected. No config wrestling.
 - **Protocol bridge**: a local proxy translates `codex`'s `/responses` ↔ `/chat/completions`, so it can reach chat-only providers.
+- **Main/subagent routing**: one Claude or Codex session can keep its main agent on one provider and route worker/explorer subagents through another provider.
 
 It keeps its **own** provider store (`~/.cli-provider-router/providers.json`), and can **import** (read-only) from [`cc-switch`](https://github.com/farion1231/cc-switch) so you don't reconfigure from scratch.
 
@@ -82,17 +83,34 @@ const r = cpr.buildChildEnv(process.env, { cli: 'claude', providerId: 'xxx', sto
 // -> { env, skipDefaultModel, aliasOnly, providerModel, providerModels, providerName, codexHome }
 // spawn('claude', args, { env: { ...process.env, ...r.env } })
 
-// Optional: mount the protocol proxies on an express-compatible app.
-cpr.mountClaudeProxy(app, { getProvider: (t, id) => store.getProvider(t, id), onUsage: (e) => {} });
-cpr.mountCodexProxy(app, { getProvider: (t, id) => store.getProvider(t, id), getPort: () => 3000 });
+// Prepare child configuration. Use the same path when mounting the proxy.
+cpr.applyClaudeProxyEnv(env, {
+  enabled: true, providerId, sessionId, subagent: { providerId: subId, model: subModel },
+  port: 3000, claudeProxyPath: '/claude-proxy', store,
+});
+cpr.applyCodexProxyConfig(env, {
+  providerId, sessionId, subagent: { providerId: subId, model: subModel },
+  port: 3000, codexProxyPath: '/codex-proxy', store,
+});
+
+// Mount handlers on an Express-compatible host. mountPath remains a supported
+// alias, but claudeProxyPath/codexProxyPath keep prepare and mount options aligned.
+const usageSink = event => recordUsage(event);
+cpr.mountClaudeProxy(app, {
+  claudeProxyPath: '/claude-proxy', getProvider: (t, id) => store.getProvider(t, id), usageSink,
+});
+cpr.mountCodexProxy(app, {
+  codexProxyPath: '/codex-proxy', getProvider: (t, id) => store.getProvider(t, id), usageSink,
+});
 ```
 
 ### Design notes
 
-- **No session concept in the library.** `buildChildEnv` takes `{ cli, providerId, store }` — it doesn't know about your session object, just the two fields it needs.
-- **No usage storage.** Proxies emit an `onUsage(event)` hook; the host tallies tokens however it likes. The library never reads or writes a `token_usage.json`.
+- **Host owns sessions and policy.** The package prepares env/config and routes requests using host-supplied provider lookup, paths, credentials and session IDs. It does not provide MultiCC provider CRUD, Aux orchestration, UI state or token persistence.
+- **No usage storage.** `onUsage(event)` and its `usageSink` alias receive `{ sessionId, role, providerId, providerName, model, isStream, usage }`. `usage` contains `inputTokens`, `outputTokens`, `cacheWrite` and `cacheRead`; the host decides how to aggregate or persist it.
 - **express is an optional peer dep.** `mountXxxProxy(app, …)` accepts any express-compatible app; `createHandler()` is also exported for custom routing.
-- **Configurable paths.** `createStore({ dataFile, ccSwitchDb })` — nothing is hardcoded to a host's directory.
+- **Configurable paths.** Pass matching `claudeProxyPath`/`codexProxyPath` to both prepare and mount calls. `createStore({ dataFile, ccSwitchDb })` controls package-owned data paths.
+- **Stable proxy helpers.** The package entry exports `parseClaudeProxyUrl`, `decodeClaudeRoutedModel`, `readOfficialOAuthToken`, `normalizeResponsesUsage` and the Codex transform helpers for host integration tests.
 
 ## Supported CLIs
 
