@@ -109,6 +109,7 @@ cpr.mountCodexProxy(app, {
 - **Host owns sessions and policy.** The package prepares env/config and routes requests using host-supplied provider lookup, paths, credentials and session IDs. It does not provide MultiCC provider CRUD, Aux orchestration, UI state or token persistence.
 - **No usage storage.** `onUsage(event)` and its `usageSink` alias receive `{ sessionId, role, providerId, providerName, model, isStream, usage }`. `usage` contains `inputTokens`, `outputTokens`, `cacheWrite` and `cacheRead`; the host decides how to aggregate or persist it.
 - **express is an optional peer dep.** `mountXxxProxy(app, …)` accepts any express-compatible app; `createHandler()` is also exported for custom routing.
+- **SQLite support is optional.** `better-sqlite3` is only needed by the legacy SQLite-backed store integration. Its supported range is `>=11.10.0 <13`, so npm can reuse a host's compatible 11.x or 12.x native module; the package never installs it at runtime.
 - **Configurable paths.** Pass matching `claudeProxyPath`/`codexProxyPath` to both prepare and mount calls. `createStore({ dataFile, ccSwitchDb })` controls package-owned data paths.
 - **Stable proxy helpers.** The package entry exports `parseClaudeProxyUrl`, `decodeClaudeRoutedModel`, `readOfficialOAuthToken`, `normalizeResponsesUsage` and the Codex transform helpers for host integration tests.
 

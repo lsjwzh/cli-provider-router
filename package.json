@@ -39,7 +39,7 @@
     "@iarna/toml": "^2.2.5"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": ">=11.10.0 <13"
   },
   "peerDependencies": {
     "express": ">=4"
