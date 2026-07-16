@@ -61,6 +61,7 @@ test('snapshot, preview, apply, status and field-level restore are reversible an
   assert.equal(discovery.liveTakeoverActive, false);
 
   const snap = await takeover.snapshot(ctx);
+  assert.throws(() => takeover.readSnapshot(ctx.home, '../../outside'), error => error.code === 'INVALID_SNAPSHOT_ID');
   assert.ok(fs.existsSync(snap.backupPath));
   assert.equal(fs.statSync(snap.backupPath).mode & 0o777, 0o600);
   assert.equal(fs.statSync(path.join(snap.dir, 'manifest.json')).mode & 0o777, 0o600);

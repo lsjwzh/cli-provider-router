@@ -54,6 +54,7 @@
     "CONTRIBUTING.md",
     "docs",
     "scripts",
+    "web",
     "LICENSE"
   ],
   "devDependencies": {}
