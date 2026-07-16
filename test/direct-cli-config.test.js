@@ -163,6 +163,30 @@ test('restore refuses drift by default and force restores snapshot', () => {
   } finally { cleanup(f); }
 });
 
+test('historical or non-active snapshots require an explicit force restore', () => {
+  const f = fixture();
+  try {
+    const oldSnapshot = f.manager.snapshot({ cli: 'claude', profileId: f.profiles.claude.id });
+    const activeSnapshot = f.manager.snapshot({ cli: 'claude', profileId: f.profiles.claude.id });
+    f.manager.apply({ cli: 'claude', profileId: f.profiles.claude.id, snapshotId: activeSnapshot.id });
+
+    assert.throws(
+      () => f.manager.restore({ cli: 'claude', snapshotId: oldSnapshot.id }),
+      error => error.code === 'RESTORE_FORCE_REQUIRED' && /does not match/.test(error.message),
+    );
+    assert.equal(f.manager.status({ cli: 'claude' }).active, true);
+
+    f.manager.restore({ cli: 'claude' });
+    assert.equal(f.manager.status({ cli: 'claude' }).active, false);
+    assert.throws(
+      () => f.manager.restore({ cli: 'claude', snapshotId: oldSnapshot.id }),
+      error => error.code === 'RESTORE_FORCE_REQUIRED' && /without an active takeover/.test(error.message),
+    );
+    const restored = f.manager.restore({ cli: 'claude', snapshotId: oldSnapshot.id, force: true });
+    assert.equal(restored.forced, true);
+  } finally { cleanup(f); }
+});
+
 test('snapshots and state use private permissions and reject traversal ids', () => {
   const f = fixture();
   try {
