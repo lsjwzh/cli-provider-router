@@ -240,22 +240,34 @@ async function cmdService(command, args) {
   if (command === 'serve' || command === 'start' || command === 'restart') checkExpress();
   const requestedPort = args.flags.port || process.env.CPR_PORT || null;
   const port = Number(requestedPort || DEFAULT_PROXY_PORT);
+  const requestedWebPort = args.flags['web-port'] || process.env.CPR_WEB_PORT || null;
+  const webPort = Number(requestedWebPort || port + 1);
   if (command === 'serve') {
     const { startServer } = require('./proxy-server');
-    startServer({ port, paths: PATHS, dataFile: DATA_FILE, ccSwitchDb: CC_DB });
+    await startServer({ port, webPort, paths: PATHS, dataFile: DATA_FILE, ccSwitchDb: CC_DB });
     return;
   }
-  const controller = createServiceController({ paths: PATHS, runner: PROXY_RUNNER, port: requestedPort ? port : undefined });
+  const controller = createServiceController({
+    paths: PATHS, runner: PROXY_RUNNER,
+    port: requestedPort ? port : undefined,
+    webPort: requestedWebPort ? webPort : undefined,
+  });
   if (command === 'start') {
-    const result = await controller.start({ port, dataFile: DATA_FILE });
+    const result = await controller.start({ port, webPort, dataFile: DATA_FILE });
     console.log(result.alreadyRunning
-      ? C.yellow(`service already running (pid ${result.pid}, port ${result.port})`)
-      : C.green(`✓ service started (pid ${result.pid}, port ${result.port})`));
+      ? C.yellow(`service already running (pid ${result.pid}, proxy ${result.port}, Web ${result.webPort})`)
+      : C.green(`✓ service started (pid ${result.pid}, proxy ${result.port}, Web ${result.webPort})`));
+    console.log(`  Web:        http://127.0.0.1:${result.webPort}`);
+    console.log(`  admin token: ${PATHS.adminTokenFile}`);
     return;
   }
   if (command === 'status') {
     const result = await controller.status();
-    if (result.running) console.log(C.green('running') + `  pid ${result.pid}  http://127.0.0.1:${result.port}`);
+    if (result.running) {
+      console.log(C.green('running') + `  pid ${result.pid}  proxy http://127.0.0.1:${result.port}`);
+      console.log(`  Web:        http://127.0.0.1:${result.webPort}`);
+      console.log(`  admin token: ${result.state.adminTokenFile || PATHS.adminTokenFile}`);
+    }
     else if (result.processRunning) console.log(C.yellow('unhealthy') + `  pid ${result.pid}  port ${result.port}`);
     else console.log(C.dim('stopped'));
     if (!result.running) process.exitCode = 1;
@@ -267,16 +279,20 @@ async function cmdService(command, args) {
     return;
   }
   if (command === 'restart') {
-    const result = await controller.restart({ ...(requestedPort ? { port } : {}), dataFile: DATA_FILE });
-    console.log(C.green(`✓ service restarted (pid ${result.pid}, port ${result.port})`));
+    const result = await controller.restart({
+      ...(requestedPort ? { port } : {}), ...(requestedWebPort ? { webPort } : {}), dataFile: DATA_FILE,
+    });
+    console.log(C.green(`✓ service restarted (pid ${result.pid}, proxy port ${result.port}, Web ${result.webPort})`));
+    console.log(`  Web:        http://127.0.0.1:${result.webPort}`);
+    console.log(`  admin token: ${PATHS.adminTokenFile}`);
     return;
   }
-  die('usage: cpr serve|start|status|stop|restart [--port 4567]');
+  die('usage: cpr serve|start|status|stop|restart [--port 4567] [--web-port 4568]');
 }
 
 function cmdProxy(args) {
   const sub = args._.shift();
-  if (!['start', 'status', 'stop', 'restart'].includes(sub)) die('usage: cpr proxy start|status|stop|restart [--port 4567]');
+  if (!['start', 'status', 'stop', 'restart'].includes(sub)) die('usage: cpr proxy start|status|stop|restart [--port 4567] [--web-port 4568]');
   return cmdService(sub, args);
 }
 
@@ -358,8 +374,8 @@ ${C.bold('Route a CLI')}
                                             cpr use xfyun -- codex exec "..."
 
 ${C.bold('Standalone service')}
-  cpr serve [--port 4567]              foreground
-  cpr start [--port 4567]              background
+  cpr serve [--port 4567] [--web-port 4568]   foreground proxy + Web
+  cpr start [--port 4567] [--web-port 4568]   background proxy + Web
   cpr status | stop | restart
   cpr proxy <action>                    compatibility alias
 
@@ -373,7 +389,7 @@ ${C.bold('Other')}
   cpr --version
 
 Store:      ${DATA_FILE}
-Override:   CPR_HOME, CPR_DATA_FILE, CPR_CC_SWITCH_DB, CPR_PORT`);
+Override:   CPR_HOME, CPR_DATA_FILE, CPR_CC_SWITCH_DB, CPR_PORT, CPR_WEB_PORT`);
 }
 
 // ── dispatch ─────────────────────────────────────────────────────────────────

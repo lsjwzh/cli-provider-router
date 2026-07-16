@@ -8,13 +8,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 - Standalone installation, upgrade, and uninstall scripts for Bash and PowerShell.
 - English and Chinese project documentation covering architecture, data ownership, agent routing, CC-Switch safety, and troubleshooting.
-
-### In development
-
-- Reversible CC-Switch endpoint takeover with verified snapshots and conflict-aware restore.
-- Loopback Web console for CC-Switch operations, agent routing, provider management, and statistics.
-- Persistent standalone route profiles and usage ledger.
-- Background service lifecycle and structured health checks.
+- Reversible CC-Switch endpoint takeover with verified snapshots, conflict-aware restore, and a fail-closed streaming gateway backed only by the active immutable snapshot.
+- Loopback Web console for CC-Switch operations, agent routing, provider management, settings, and statistics.
+- Persistent standalone route profiles and sharded usage ledger.
+- Managed dual-port proxy/Web service lifecycle with structured health, persistent 0600 admin token, restart, and coordinated shutdown.
 
 ## [0.2.0] - Unreleased
 

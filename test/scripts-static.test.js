@@ -92,5 +92,6 @@ test('documentation distinguishes MultiCC sync from CPR takeover', () => {
   }
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.match(readme, /npm package has \*\*not been published yet\*\*/);
-  assert.match(readme, /In development/);
+  assert.match(readme, /Reversible CC-Switch endpoint takeover \| Available/);
+  assert.match(readme, /Background service lifecycle \| Available/);
 });

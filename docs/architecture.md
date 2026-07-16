@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-cli-provider-router owns provider normalization, CLI spawn configuration, protocol routing, standalone route policy, normalized usage events, and—when completed—the standalone usage ledger and Web console.
+cli-provider-router owns provider normalization, CLI spawn configuration, protocol routing, standalone route policy, normalized usage events, the standalone usage ledger, and the Web console.
 
 A host such as MultiCC owns orchestration: sessions, tasks, workflows, worktrees, dispatch, and process supervision. It may call CPR's library and pass `sessionId` and role context, but CPR must not read MultiCC's private data directory or infer orchestration state from it.
 
@@ -22,7 +22,7 @@ Claude/Codex process
         +--------> normalized usage event
                          |
                          +--> host callback (available)
-                         +--> CPR usage ledger (in development)
+                         +--> CPR usage ledger
 ```
 
 ## Current modules
@@ -43,10 +43,10 @@ The target layout is isolated under `CPR_HOME` (default `~/.cli-provider-router`
 CPR_HOME/
 ├── config/settings.json
 ├── data/providers.json
-├── data/route-profiles.json       # in development
-├── data/integration-state.json    # in development
-├── data/usage.sqlite              # in development
-├── backups/cc-switch/             # in development
+├── data/route-profiles.json
+├── data/usage/                     # date-sharded JSONL ledger
+├── ccswitch/state.json
+├── ccswitch/snapshots/
 ├── codex-homes/
 ├── logs/
 ├── run/
@@ -63,13 +63,15 @@ There are three explicit paths:
 
 1. CPR read-only import: CC-Switch database → CPR provider store.
 2. MultiCC sync: CC-Switch data → MultiCC, controlled entirely by MultiCC.
-3. CPR reversible takeover (in development): verified snapshot → selected CC-Switch endpoint rewrite → CPR proxy → upstream, with restore.
+3. CPR reversible takeover: verified snapshot → selected CC-Switch endpoint rewrite → CPR snapshot-backed gateway → upstream, with restore.
 
 No path should silently activate another. In particular, importing providers must never imply takeover.
 
-## Web and daemon target
+## Web and managed service
 
-The standalone Web console and service lifecycle are in development. The target service binds to `127.0.0.1`, exposes a versioned local API, and owns provider UI, CC-Switch preview/apply/restore, route profiles, usage queries, and health status. HTTP handlers must call service-layer operations rather than edit files or SQLite rows directly.
+`cpr start` and `cpr serve` run the proxy/gateway port and a separate Web port in one process. Both bind only to `127.0.0.1`; the Web port defaults to proxy port + 1. The service writes its state, health, PID, and a 0600 admin token under `CPR_HOME/run`. It owns provider UI, CC-Switch preview/snapshot/apply/restore, route profiles, usage queries, settings, and health status. `stop` closes both HTTP servers before recording the stopped state.
+
+The CC-Switch gateway is mounted before JSON parsing so it can stream arbitrary request and response bodies. It resolves upstreams only through the active takeover state's `snapshotId`, verifies snapshot hashes, preserves authentication headers, appends the remaining path/query safely, and rejects loopback/self routes.
 
 ## Compatibility principles
 
