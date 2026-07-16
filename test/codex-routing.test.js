@@ -175,12 +175,12 @@ async function main() {
 
       const config = fs.readFileSync(path.join(home, 'config.toml'), 'utf8');
       assert.match(config, /http:\/\/127\.0\.0\.1:3456\/codex-proxy\/main-provider\/session-1\/main/);
-      assert.match(config, /\[model_providers\.multicc_subagent\]/);
+      assert.match(config, /\[model_providers\.cpr_subagent\]/);
       assert.match(config, /http:\/\/127\.0\.0\.1:3456\/codex-proxy\/sub-provider\/session-1\/sub/);
       for (const role of ['default', 'worker', 'explorer']) {
         const agent = fs.readFileSync(path.join(home, 'agents', `${role}.toml`), 'utf8');
         assert.match(agent, new RegExp(`name = "${role}"`));
-        assert.match(agent, /model_provider = "multicc_subagent"/);
+        assert.match(agent, /model_provider = "cpr_subagent"/);
         assert.match(agent, /model = "sub-model"/);
       }
     } finally {
