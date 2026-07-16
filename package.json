@@ -1,6 +1,6 @@
 {
   "name": "cli-provider-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Route any AI CLI (claude/codex/opencode) to a different upstream provider per invocation — by injecting spawn env. Includes Responses↔Chat protocol proxy for codex→chat-only providers. Library + CLI.",
   "main": "lib/index.js",
   "bin": {

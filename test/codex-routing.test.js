@@ -10,6 +10,7 @@ const express = require('express');
 const {
   mountCodexProxy,
   normalizeResponsesUsage,
+  resolveProviderTarget,
 } = require('../lib/proxy/codex');
 const {
   applyCodexProxyConfig,
@@ -105,6 +106,17 @@ async function main() {
       cacheWrite: 0,
       cacheRead: 40,
     });
+  });
+
+  await test('custom Codex proxy path is rejected as a recursive upstream', () => {
+    const recursive = provider({
+      name: 'Recursive', baseUrl: 'http://localhost:4567/custom-codex/provider/session/main',
+      apiKey: 'key', model: 'model',
+    });
+    assert.match(
+      resolveProviderTarget(recursive, { codexProxyPath: '/custom-codex' }).error,
+      /points back to codex-proxy/
+    );
   });
 
   await test('official Codex provider follows the current global OAuth login', () => {
@@ -235,6 +247,15 @@ async function main() {
       assert.equal(claudeEnv.ANTHROPIC_AUTH_TOKEN, 'router-session-y');
       assert.equal(claudeEnv.CLAUDE_CODE_SUBAGENT_MODEL, 'delegate:claude-sub:sub-model');
       assert.equal(claudeEnv.ANTHROPIC_API_KEY, undefined);
+
+      const aliasEnv = {};
+      assert.equal(applyClaudeProxyEnv(aliasEnv, {
+        enabled: true, providerId: 'claude-main', sessionId: 'alias-session', port: 9001,
+        mountPath: '/legacy-claude', store: {
+          getProvider: () => ({ settingsConfig: { env: { ANTHROPIC_BASE_URL: 'https://claude.example' } } }),
+        },
+      }), true);
+      assert.equal(aliasEnv.ANTHROPIC_BASE_URL, 'http://127.0.0.1:9001/legacy-claude/claude-main/alias-session');
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }

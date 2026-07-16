@@ -38,7 +38,8 @@ cpr.mountClaudeProxy(app, { getProvider, onUsage: () => {} });
 
 const server = app.listen(PORT, '127.0.0.1', () => {
   console.log(`cli-provider-router proxy listening on http://127.0.0.1:${PORT}`);
-  console.log(`  codex:  POST /codex-proxy/:providerId/responses`);
+  console.log(`  codex:  POST /codex-proxy/:providerId/:sessionId/:role/responses`);
+  console.log(`  claude: POST /claude-proxy/:providerId/:sessionId/v1/messages`);
   console.log(`  store:  ${DATA_FILE}`);
   console.log(`  (Ctrl-C to stop)`);
 });
