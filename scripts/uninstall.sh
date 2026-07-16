@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+usage() {
+  cat <<'EOF'
+Uninstall cli-provider-router application files.
+
+Usage:
+  uninstall.sh [--install-root DIR] [--bin-dir DIR] [--cpr-home DIR] [--purge]
+
+Data under CPR_HOME is preserved unless --purge is supplied. Uninstall is
+refused while CPR's integration state reports an active CC-Switch takeover.
+EOF
+}
+
+INSTALL_ROOT="${CPR_INSTALL_ROOT:-$HOME/.local/share/cli-provider-router}"
+BIN_DIR="${CPR_BIN_DIR:-$HOME/.local/bin}"
+CPR_HOME_VALUE="${CPR_HOME:-$HOME/.cli-provider-router}"
+PURGE=0
+
+while (($#)); do
+  case "$1" in
+    --install-root) INSTALL_ROOT="${2:?--install-root requires a value}"; shift 2 ;;
+    --bin-dir) BIN_DIR="${2:?--bin-dir requires a value}"; shift 2 ;;
+    --cpr-home) CPR_HOME_VALUE="${2:?--cpr-home requires a value}"; shift 2 ;;
+    --purge) PURGE=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+command -v node >/dev/null || { echo "error: Node.js is required to validate takeover state before uninstall" >&2; exit 1; }
+
+STATE_FILES=("$CPR_HOME_VALUE/data/integration-state.json" "$CPR_HOME_VALUE/integration-state.json")
+for state_file in "${STATE_FILES[@]}"; do
+  [[ -e "$state_file" ]] || continue
+  if ! node - "$state_file" <<'NODE'
+const fs = require('fs');
+const file = process.argv[2];
+let state;
+try { state = JSON.parse(fs.readFileSync(file, 'utf8')); }
+catch (error) {
+  console.error(`error: cannot validate integration state ${file}: ${error.message}`);
+  process.exit(2);
+}
+const entries = [state, state.ccSwitch, state.ccswitch, state.takeover, state.integration].filter(Boolean);
+const active = entries.some(x => x.takeoverActive === true || x.active === true ||
+  ['active', 'applying', 'restoring'].includes(String(x.status || '').toLowerCase()));
+if (active) {
+  console.error(`error: CC-Switch takeover is active according to ${file}`);
+  console.error('Restore CC-Switch endpoints before uninstalling cli-provider-router.');
+  process.exit(3);
+}
+NODE
+  then
+    exit 3
+  fi
+done
+
+SHIM="$BIN_DIR/cpr"
+if [[ -L "$SHIM" ]]; then
+  target="$(readlink "$SHIM" 2>/dev/null || true)"
+  case "$target" in *cli-provider-router*|*"$INSTALL_ROOT"*) rm -f -- "$SHIM" ;; esac
+elif [[ -f "$SHIM" ]]; then
+  content="$(<"$SHIM")"
+  case "$content" in *"$INSTALL_ROOT"*) rm -f -- "$SHIM" ;; esac
+fi
+
+rm -rf -- "$INSTALL_ROOT"
+echo "Removed cli-provider-router application files from $INSTALL_ROOT"
+
+if ((PURGE)); then
+  rm -rf -- "$CPR_HOME_VALUE"
+  echo "Purged CPR data from $CPR_HOME_VALUE"
+else
+  echo "Preserved CPR data at $CPR_HOME_VALUE"
+  echo "Run again with --purge only when you intentionally want to delete it."
+fi
