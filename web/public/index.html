@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CLI Provider Router</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><strong>CLI Provider Router</strong><span class="tag">standalone</span></div>
+    <span id="connection" class="status">Connecting…</span>
+  </header>
+  <div class="layout">
+    <nav aria-label="Management sections">
+      <button data-page="dashboard" class="active">Dashboard</button>
+      <button data-page="providers">Providers</button>
+      <button data-page="ccswitch">CC-Switch</button>
+      <button data-page="routing">Agent Routing</button>
+      <button data-page="usage">Usage</button>
+      <button data-page="settings">Settings</button>
+    </nav>
+    <main>
+      <div id="notice" role="status" aria-live="polite"></div>
+
+      <section id="page-dashboard" class="page active">
+        <div class="heading"><div><h1>Dashboard</h1><p>Local routing health at a glance.</p></div><button id="dashboard-refresh">Refresh</button></div>
+        <div id="dashboard-cards" class="cards"></div>
+        <pre id="dashboard-detail" class="output"></pre>
+      </section>
+
+      <section id="page-providers" class="page">
+        <div class="heading"><div><h1>Providers</h1><p>Credentials are accepted but never returned by this page.</p></div><button id="providers-refresh">Refresh</button></div>
+        <form id="provider-form" class="panel form-grid">
+          <label>CLI<select name="appType"><option value="claude">Claude</option><option value="codex">Codex</option></select></label>
+          <label>Name<input name="name" required maxlength="120"></label>
+          <label>Base URL<input name="baseUrl" type="url" placeholder="https://api.example/v1"></label>
+          <label>Model<input name="model" placeholder="model-id"></label>
+          <label class="wide">Auth token<input name="authToken" type="password" autocomplete="new-password"></label>
+          <button type="submit">Add provider</button>
+        </form>
+        <div id="providers-list" class="stack"></div>
+      </section>
+
+      <section id="page-ccswitch" class="page">
+        <div class="heading"><div><h1>CC-Switch Takeover</h1><p>This writes reversible local proxy URLs. It is separate from MultiCC's read-only sync.</p></div><button id="cc-refresh">Detect / Status</button></div>
+        <div class="warning">Apply and restore require an exact confirmation phrase. Always inspect the preview first.</div>
+        <div class="toolbar">
+          <button id="cc-preview">Preview changes</button>
+          <button id="cc-snapshot">Create snapshot</button>
+          <button id="cc-apply" class="danger">Apply takeover</button>
+          <button id="cc-restore">Restore</button>
+          <button id="cc-force" class="danger">Resolve conflict: force restore</button>
+        </div>
+        <pre id="cc-status" class="output"></pre>
+        <div id="cc-preview-list" class="stack"></div>
+      </section>
+
+      <section id="page-routing" class="page">
+        <div class="heading"><div><h1>Agent Routing</h1><p>Claude supports main/sub; Codex supports main/default/worker/explorer.</p></div><button id="routes-refresh">Refresh</button></div>
+        <form id="route-form" class="panel">
+          <div class="form-grid">
+            <label>Name<input name="name" required maxlength="120"></label>
+            <label>CLI<select name="cli" id="route-cli"><option value="claude">Claude</option><option value="codex">Codex</option></select></label>
+          </div>
+          <div id="route-endpoints" class="route-grid"></div>
+          <button type="submit">Create route profile</button>
+        </form>
+        <div id="routes-list" class="stack"></div>
+      </section>
+
+      <section id="page-usage" class="page">
+        <div class="heading"><div><h1>Usage</h1><p>Usage is read from the injected standalone ledger.</p></div><button id="usage-refresh">Query</button></div>
+        <form id="usage-form" class="panel form-grid">
+          <label>From<input name="from" type="date"></label><label>To<input name="to" type="date"></label>
+          <label>CLI<select name="cli"><option value="">All</option><option>claude</option><option>codex</option></select></label>
+          <label>Role<input name="role" placeholder="main / sub / worker"></label>
+        </form>
+        <pre id="usage-output" class="output"></pre>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="heading"><div><h1>Settings</h1><p>Sensitive values are redacted in responses.</p></div><button id="settings-refresh">Reload</button></div>
+        <form id="settings-form" class="panel">
+          <label>JSON patch<textarea id="settings-json" rows="15" spellcheck="false">{}</textarea></label>
+          <button type="submit">Apply settings patch</button>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
