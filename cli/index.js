@@ -32,6 +32,7 @@ function store() {
 }
 
 function usageLedger() { return cpr.createUsageLedger({ paths: PATHS }); }
+function routeProfiles() { return cpr.createRouteProfileStore({ paths: PATHS }); }
 
 // ── tiny arg parser ──────────────────────────────────────────────────────────
 // Splits argv into { _: positionals, flags: {k:v|true} }, stopping at `--`
@@ -296,6 +297,85 @@ function cmdProxy(args) {
   return cmdService(sub, args);
 }
 
+function requireCliConfigArgs(args, sub) {
+  const cli = String(args.flags.cli || '').toLowerCase();
+  if (!['claude', 'codex'].includes(cli)) {
+    die(`usage: cpr cli-config ${sub} --cli claude|codex${['preview', 'snapshot', 'apply'].includes(sub) ? ' --profile <id>' : ''}${['snapshot', 'apply', 'restore'].includes(sub) ? ' --yes' : ''}`);
+  }
+  const profileId = args.flags.profile;
+  if (['preview', 'snapshot', 'apply'].includes(sub) && !profileId) {
+    die(`usage: cpr cli-config ${sub} --cli claude|codex --profile <id>${['snapshot', 'apply'].includes(sub) ? ' --yes' : ''}`);
+  }
+  if (['snapshot', 'apply', 'restore'].includes(sub) && !args.flags.yes) {
+    die(`cpr cli-config ${sub} changes native CLI files; pass --yes after reviewing status and preview`);
+  }
+  return { cli, profileId };
+}
+
+function printCliConfigResult(sub, result, json) {
+  if (json) return console.log(JSON.stringify(result, null, 2));
+  if (sub === 'detect') {
+    const row = Array.isArray(result) ? result[0] : result;
+    console.log(C.bold(`${row.cli} native configuration`));
+    console.log(`  path:    ${row.configPath}`);
+    console.log(`  exists:  ${row.exists ? 'yes' : 'no'}`);
+    console.log(`  managed: ${row.active ? C.green('yes') : 'no'}${row.drifted ? C.red(' (drifted)') : ''}`);
+    return;
+  }
+  if (sub === 'status') {
+    console.log(C.bold(`${result.cli} direct CLI takeover: `) + (result.active ? C.green('active') : C.dim('inactive')));
+    if (result.profileId) console.log(`  profile:  ${result.profileId}`);
+    if (result.snapshotId) console.log(`  snapshot: ${result.snapshotId}`);
+    console.log(`  drifted:  ${result.drifted ? C.red('yes') : 'no'}`);
+    return;
+  }
+  if (sub === 'preview') {
+    console.log(C.bold(`Preview ${result.cli} with route profile ${result.profileId}`));
+    for (const file of result.files || []) console.log(`  ${file.changed ? C.yellow('change') : C.dim('same')}  ${file.path}`);
+    return;
+  }
+  const verb = sub === 'snapshot' ? 'snapshot created' : sub === 'apply' ? 'direct CLI takeover applied' : 'native CLI configuration restored';
+  console.log(C.green(`✓ ${verb}`));
+  if (result.cli) console.log(`  cli:      ${result.cli}`);
+  if (result.profileId) console.log(`  profile:  ${result.profileId}`);
+  console.log(`  snapshot: ${result.id || result.snapshotId}`);
+}
+
+async function cmdCliConfig(args) {
+  const sub = args._[0];
+  if (!['detect', 'status', 'preview', 'snapshot', 'apply', 'restore'].includes(sub)) {
+    die('usage: cpr cli-config detect|status|preview|snapshot|apply|restore --cli claude|codex [--profile <id>] [--snapshot <id>] [--force] [--yes] [--json]');
+  }
+  const { cli, profileId } = requireCliConfigArgs(args, sub);
+  const controller = createServiceController({ paths: PATHS, runner: PROXY_RUNNER });
+  const service = await controller.status();
+  if (sub === 'apply') {
+    if (!service.running) die('CPR managed service must be running before apply; run `cpr start` first');
+    if (!service.health || Number(service.health.port) !== Number(service.port)) {
+      die(`managed service proxy port mismatch (state ${service.port}, health ${service.health && service.health.port}); restart the service`);
+    }
+  }
+  const proxyPort = Number(service.port || DEFAULT_PROXY_PORT);
+  const proxyBaseUrl = `http://127.0.0.1:${proxyPort}`;
+  const manager = cpr.createDirectCliConfigManager({
+    paths: PATHS,
+    store: store(),
+    profiles: routeProfiles(),
+    proxyBaseUrl,
+  });
+  if (sub === 'apply' && manager.preview({ cli, profileId }).proxyBaseUrl !== proxyBaseUrl) {
+    die(`direct CLI config proxy URL does not match the managed service (${proxyBaseUrl})`);
+  }
+  const common = { cli, profileId, snapshotId: args.flags.snapshot };
+  const result = sub === 'detect' ? manager.detect({ cli })
+    : sub === 'status' ? manager.status({ cli })
+      : sub === 'preview' ? manager.preview(common)
+        : sub === 'snapshot' ? manager.snapshot(common)
+          : sub === 'apply' ? manager.apply(common)
+            : manager.restore({ ...common, force: !!args.flags.force });
+  printCliConfigResult(sub, await Promise.resolve(result), !!args.flags.json);
+}
+
 function usageFilters(flags) {
   return {
     from: flags.from,
@@ -379,6 +459,13 @@ ${C.bold('Standalone service')}
   cpr status | stop | restart
   cpr proxy <action>                    compatibility alias
 
+${C.bold('Native CLI config (works without CC-Switch)')}
+  cpr cli-config detect|status --cli claude|codex [--json]
+  cpr cli-config preview --cli claude|codex --profile <id> [--json]
+  cpr cli-config snapshot --cli claude|codex --profile <id> --yes [--json]
+  cpr cli-config apply --cli claude|codex --profile <id> [--snapshot <id>] --yes [--json]
+  cpr cli-config restore --cli claude|codex [--snapshot <id>] [--force] --yes [--json]
+
 ${C.bold('Usage ledger')}
   cpr usage summary [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--role main|sub|aux] [--json]
   cpr usage retention [--days 90]
@@ -413,6 +500,7 @@ async function main() {
     case 'serve': case 'start': case 'status': case 'stop': case 'restart': return cmdService(cmd, args);
     case 'proxy': return cmdProxy(args);
     case 'usage': return cmdUsage(args);
+    case 'cli-config': return cmdCliConfig(args);
     default: die(`unknown command: ${cmd}\n  run \`cpr help\` for usage.`);
   }
 }

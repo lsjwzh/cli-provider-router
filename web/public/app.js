@@ -1,6 +1,7 @@
 'use strict';
 
 let adminToken = '';
+let routeProfileRows = [];
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -42,6 +43,7 @@ async function loadDashboard() {
   const values = [
     ['Claude providers', data.providers.claude], ['Codex providers', data.providers.codex],
     ['Route profiles', data.routeProfiles], ['CC-Switch', data.ccSwitch.takeover || 'unavailable'],
+    ['Native CLI config', `Claude ${data.directCliConfig.claude.active ? 'managed' : 'native'} · Codex ${data.directCliConfig.codex.active ? 'managed' : 'native'}`],
   ];
   for (const [label, value] of values) {
     const card = document.createElement('div'); card.className = 'card';
@@ -99,6 +101,53 @@ async function confirmedCc(path, phrase, extra = {}) {
   notify(`${phrase} completed`); await loadCc(); return data;
 }
 
+function selectedCliConfig() {
+  return { cli: $('#cli-config-cli').value, profileId: $('#cli-config-profile').value };
+}
+
+function renderCliConfigProfiles() {
+  const cli = $('#cli-config-cli').value;
+  const select = $('#cli-config-profile');
+  const previous = select.value;
+  select.textContent = '';
+  for (const profile of routeProfileRows.filter(row => row.cli === cli && row.enabled)) {
+    const option = document.createElement('option');
+    option.value = profile.id; option.textContent = `${profile.name} (${profile.id})`;
+    select.append(option);
+  }
+  if ([...select.options].some(option => option.value === previous)) select.value = previous;
+}
+
+async function loadCliConfig() {
+  const cli = $('#cli-config-cli').value;
+  const [detect, status] = await Promise.all([
+    api(`/cli-config/detect?cli=${encodeURIComponent(cli)}`),
+    api(`/cli-config/status?cli=${encodeURIComponent(cli)}`),
+  ]);
+  showJson('#cli-config-status', { detect, status });
+}
+
+async function previewCliConfig() {
+  const selected = selectedCliConfig();
+  if (!selected.profileId) throw new Error(`Create an enabled ${selected.cli} route profile first`);
+  const data = await api('/cli-config/preview', { method: 'POST', body: selected });
+  const list = $('#cli-config-files'); list.textContent = '';
+  for (const file of data.files || []) {
+    const state = document.createElement('span'); state.textContent = file.changed ? 'change' : 'same';
+    list.append(item(file.path, `before ${file.beforeSha256 || 'absent'} · after ${file.afterSha256}`, state));
+  }
+  notify('Native CLI config preview ready');
+  return data;
+}
+
+async function confirmedCliConfig(path, phrase, extra = {}) {
+  const selected = selectedCliConfig();
+  if (!selected.profileId && path !== '/cli-config/restore') throw new Error(`Create an enabled ${selected.cli} route profile first`);
+  if (window.prompt(`Type ${phrase} to continue`) !== phrase) return;
+  const data = await api(path, { method: 'POST', body: { ...selected, confirmation: phrase, ...extra } });
+  notify(`${phrase} completed`); await loadCliConfig(); return data;
+}
+
 function routeRoles() { return $('#route-cli').value === 'claude' ? ['main', 'sub'] : ['main', 'default', 'worker', 'explorer']; }
 function renderRouteInputs() {
   const target = $('#route-endpoints'); target.innerHTML = '';
@@ -112,7 +161,8 @@ function renderRouteInputs() {
 }
 
 async function loadRoutes() {
-  const data = await api('/routes'); const list = $('#routes-list'); list.innerHTML = '';
+  const data = await api('/routes'); routeProfileRows = data.profiles; renderCliConfigProfiles();
+  const list = $('#routes-list'); list.innerHTML = '';
   for (const profile of data.profiles) {
     const actions = document.createElement('div'); actions.className = 'toolbar';
     const toggle = document.createElement('button'); toggle.textContent = profile.enabled ? 'Disable' : 'Enable';
@@ -150,6 +200,13 @@ function bind() {
   $('#cc-apply').addEventListener('click', async () => { try { const p = await previewCc(); if (p.canApply) await confirmedCc('/ccswitch/apply', 'APPLY TAKEOVER'); } catch (error) { notify(error.message, true); } });
   $('#cc-restore').addEventListener('click', () => confirmedCc('/ccswitch/restore', 'RESTORE').catch(error => notify(error.message, true)));
   $('#cc-force').addEventListener('click', () => confirmedCc('/ccswitch/restore', 'FORCE RESTORE', { force: true }).catch(error => notify(error.message, true)));
+  $('#cli-config-cli').addEventListener('change', () => { renderCliConfigProfiles(); loadCliConfig().catch(error => notify(error.message, true)); });
+  $('#cli-config-refresh').addEventListener('click', () => loadCliConfig().catch(error => notify(error.message, true)));
+  $('#cli-config-preview').addEventListener('click', () => previewCliConfig().catch(error => notify(error.message, true)));
+  $('#cli-config-snapshot').addEventListener('click', () => confirmedCliConfig('/cli-config/snapshot', 'CREATE CLI SNAPSHOT').catch(error => notify(error.message, true)));
+  $('#cli-config-apply').addEventListener('click', async () => { try { await previewCliConfig(); await confirmedCliConfig('/cli-config/apply', 'APPLY CLI TAKEOVER'); } catch (error) { notify(error.message, true); } });
+  $('#cli-config-restore').addEventListener('click', () => confirmedCliConfig('/cli-config/restore', 'RESTORE CLI CONFIG').catch(error => notify(error.message, true)));
+  $('#cli-config-force').addEventListener('click', () => confirmedCliConfig('/cli-config/restore', 'FORCE RESTORE CLI CONFIG', { force: true }).catch(error => notify(error.message, true)));
   $('#route-cli').addEventListener('change', renderRouteInputs);
   $('#routes-refresh').addEventListener('click', () => loadRoutes().catch(error => notify(error.message, true)));
   $('#route-form').addEventListener('submit', async event => {
@@ -168,7 +225,8 @@ async function start() {
   try {
     const response = await fetch('/api/bootstrap'); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'bootstrap failed');
     adminToken = data.adminToken; $('#connection').textContent = 'Local admin connected';
-    await Promise.all([loadDashboard(), loadProviders(), loadCc(), loadRoutes(), loadUsage(), loadSettings()]);
+    await loadRoutes();
+    await Promise.all([loadDashboard(), loadProviders(), loadCc(), loadCliConfig(), loadUsage(), loadSettings()]);
   } catch (error) { $('#connection').textContent = 'Disconnected'; notify(error.message, true); }
 }
 

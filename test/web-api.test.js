@@ -46,18 +46,33 @@ function dependencies() {
     apply: async options => { calls.push(['apply', options]); return { changed: 1, snapshotId: 's1' }; },
     restore: options => { calls.push(['restore', options]); return { changed: 1 }; },
   };
+  const directCliConfig = {
+    detect: ({ cli }) => [{ cli, configPath: `/home/test/.${cli}/config`, exists: true, active: false, drifted: false, files: [] }],
+    status: ({ cli }) => ({ cli, active: false, drifted: false, files: [] }),
+    preview: input => ({ cli: input.cli, profileId: input.profileId, proxyBaseUrl: 'http://127.0.0.1:4567', files: [{ path: `/home/test/.${input.cli}/config`, changed: true, beforeSha256: null, afterSha256: 'safe-hash' }] }),
+    snapshot: input => { calls.push(['cli-snapshot', input]); return { id: 'native-s1', cli: input.cli, profileId: input.profileId, files: [{ path: '/safe/path', sha256: 'safe-hash' }] }; },
+    apply: input => { calls.push(['cli-apply', input]); return { cli: input.cli, profileId: input.profileId, snapshotId: input.snapshotId || 'native-s1' }; },
+    restore: input => {
+      if (input.snapshotId === 'historical' && !input.force) {
+        const error = new Error('historical snapshots require force restore'); error.code = 'RESTORE_FORCE_REQUIRED'; throw error;
+      }
+      calls.push(['cli-restore', input]); return { cli: input.cli, restored: true, snapshotId: input.snapshotId || 'native-s1', forced: input.force };
+    },
+  };
   const settings = { value: { port: 4567, adminToken: 'must-not-leak' }, getAll() { return this.value; }, update(patch) { this.value = { ...this.value, ...patch }; return this.value; } };
-  return { store, routeProfiles, ccSwitch, settings, calls };
+  return { store, routeProfiles, ccSwitch, directCliConfig, settings, calls };
 }
 
-test('standalone Web serves six sections and enforces loopback, Origin and admin token', async t => {
+test('standalone Web serves seven sections and enforces loopback, Origin and admin token', async t => {
   const deps = dependencies();
   const web = await createWebServer({ ...deps, ccSwitchOptions: { dbPath: '/fixture/cc-switch.db', proxyBaseUrl: 'http://127.0.0.1:4567' } });
   t.after(() => web.close());
 
   const page = await request(web.port, '/');
   assert.equal(page.status, 200);
-  for (const label of ['Dashboard', 'Providers', 'CC-Switch', 'Agent Routing', 'Usage', 'Settings']) assert.match(page.text, new RegExp(label));
+  for (const label of ['Dashboard', 'Providers', 'CLI Config', 'CC-Switch', 'Agent Routing', 'Usage', 'Settings']) assert.match(page.text, new RegExp(label));
+  assert.match(page.text, /Works without CC-Switch/);
+  assert.match(page.text, /separate from CC-Switch takeover/);
   assert.match(page.headers['content-security-policy'], /default-src 'self'/);
   assert.doesNotMatch(page.text, /<script[^>]*>[^<]/);
   assert.equal((await request(web.port, '/app.js')).status, 200);
@@ -83,6 +98,47 @@ test('standalone Web serves six sections and enforces loopback, Origin and admin
   assert.equal(settings.json().settings.adminToken, '<redacted>');
   const usage = await request(web.port, '/api/usage', { headers: auth });
   assert.deepEqual(usage.json(), { available: false, reason: 'usage-ledger-not-configured' });
+});
+
+test('native CLI config APIs work without CC-Switch and require exact confirmations', async t => {
+  const deps = dependencies();
+  delete deps.ccSwitch;
+  const web = await createWebServer({ ...deps, proxyBaseUrl: 'http://127.0.0.1:4567' });
+  t.after(() => web.close());
+  const auth = { 'x-cpr-admin-token': web.adminToken };
+
+  const bootstrap = (await request(web.port, '/api/bootstrap')).json();
+  assert.equal(bootstrap.capabilities.ccSwitch, false);
+  assert.equal(bootstrap.capabilities.directCliConfig, true);
+  assert.equal((await request(web.port, '/api/cli-config/detect?cli=claude', { headers: auth })).status, 200);
+  assert.equal((await request(web.port, '/api/cli-config/status?cli=bad', { headers: auth })).status, 400);
+
+  const route = await request(web.port, '/api/routes', { method: 'POST', headers: auth, body: {
+    name: 'Native Claude', cli: 'claude', routes: { main: { providerId: 'p1' } },
+  } });
+  const profileId = route.json().profile.id;
+  const preview = await request(web.port, '/api/cli-config/preview', { method: 'POST', headers: auth, body: { cli: 'claude', profileId } });
+  assert.equal(preview.status, 200);
+  assert.doesNotMatch(preview.text, /contentBase64|top-secret|ANTHROPIC_AUTH_TOKEN/);
+
+  for (const endpoint of ['snapshot', 'apply', 'restore']) {
+    const denied = await request(web.port, `/api/cli-config/${endpoint}`, { method: 'POST', headers: auth, body: { cli: 'claude', profileId } });
+    assert.equal(denied.status, 400);
+  }
+  const snapshot = await request(web.port, '/api/cli-config/snapshot', { method: 'POST', headers: auth, body: { cli: 'claude', profileId, confirmation: 'CREATE CLI SNAPSHOT' } });
+  assert.equal(snapshot.status, 201);
+  assert.doesNotMatch(snapshot.text, /contentBase64|token/i);
+  const applied = await request(web.port, '/api/cli-config/apply', { method: 'POST', headers: auth, body: { cli: 'claude', profileId, snapshotId: 'native-s1', confirmation: 'APPLY CLI TAKEOVER' } });
+  assert.equal(applied.status, 200);
+  const forceWrong = await request(web.port, '/api/cli-config/restore', { method: 'POST', headers: auth, body: { cli: 'claude', force: true, confirmation: 'RESTORE CLI CONFIG' } });
+  assert.equal(forceWrong.status, 400);
+  const forceRequired = await request(web.port, '/api/cli-config/restore', { method: 'POST', headers: auth, body: { cli: 'claude', snapshotId: 'historical', confirmation: 'RESTORE CLI CONFIG' } });
+  assert.equal(forceRequired.status, 409);
+  assert.match(forceRequired.json().message, /require force restore/);
+  const forced = await request(web.port, '/api/cli-config/restore', { method: 'POST', headers: auth, body: { cli: 'claude', force: true, confirmation: 'FORCE RESTORE CLI CONFIG' } });
+  assert.equal(forced.status, 200);
+  assert.equal(deps.calls.some(call => call[0] === 'cli-apply'), true);
+  assert.equal(deps.calls.some(call => call[0] === 'cli-restore' && call[1].force), true);
 });
 
 test('CC-Switch dangerous writes require preview-oriented confirmation and route roles are constrained', async t => {

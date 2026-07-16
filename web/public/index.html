@@ -15,6 +15,7 @@
     <nav aria-label="Management sections">
       <button data-page="dashboard" class="active">Dashboard</button>
       <button data-page="providers">Providers</button>
+      <button data-page="cli-config">CLI Config</button>
       <button data-page="ccswitch">CC-Switch</button>
       <button data-page="routing">Agent Routing</button>
       <button data-page="usage">Usage</button>
@@ -40,6 +41,24 @@
           <button type="submit">Add provider</button>
         </form>
         <div id="providers-list" class="stack"></div>
+      </section>
+
+      <section id="page-cli-config" class="page">
+        <div class="heading"><div><h1>Native CLI Config</h1><p>Works without CC-Switch. This is separate from CC-Switch takeover and directly manages Claude or Codex native configuration.</p></div><button id="cli-config-refresh">Detect / Status</button></div>
+        <div class="warning">A private snapshot is required before takeover. Apply and restore use exact confirmation phrases; preview the file list first.</div>
+        <div class="panel form-grid">
+          <label>CLI<select id="cli-config-cli"><option value="claude">Claude</option><option value="codex">Codex</option></select></label>
+          <label>Route profile<select id="cli-config-profile"></select></label>
+        </div>
+        <div class="toolbar">
+          <button id="cli-config-preview">Preview files</button>
+          <button id="cli-config-snapshot">Create snapshot</button>
+          <button id="cli-config-apply" class="danger">Apply direct takeover</button>
+          <button id="cli-config-restore">Restore</button>
+          <button id="cli-config-force" class="danger">Force restore drifted config</button>
+        </div>
+        <pre id="cli-config-status" class="output"></pre>
+        <div id="cli-config-files" class="stack"></div>
       </section>
 
       <section id="page-ccswitch" class="page">
