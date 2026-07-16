@@ -8,7 +8,8 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "lint": "find lib cli test -name '*.js' -type f -exec node --check {} +"
+    "lint": "find lib cli test -name '*.js' -type f -exec node --check {} +",
+    "test:scripts": "bash -n scripts/install.sh scripts/upgrade.sh scripts/uninstall.sh && node test/scripts-static.test.js"
   },
   "keywords": [
     "claude-code",
@@ -54,6 +55,12 @@
     "cli",
     "defaults.json",
     "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "docs",
+    "scripts",
     "LICENSE"
   ],
   "devDependencies": {

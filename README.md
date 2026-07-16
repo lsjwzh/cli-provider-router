@@ -1,145 +1,200 @@
 # cli-provider-router
 
-> Route any AI CLI (`claude` / `codex` / `opencode`) to a different upstream provider **per invocation** — by injecting spawn env. Zero changes to the CLI itself.
->
-> Includes a Responses↔Chat protocol proxy so `codex` (which only speaks `/responses`) can reach domestic providers that only expose `/chat/completions` (DeepSeek, iFlytek GLM, Qwen, MiniMax, …).
+Route Claude Code and Codex to different upstream providers without changing the CLIs themselves. `cli-provider-router` (CPR) provides a reusable routing library, a `cpr` command, and local Claude/Codex protocol proxies.
 
-Library + CLI (`cpr`).
+[简体中文](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
----
+> Project status: **early development**. Provider storage, read-only CC-Switch import, per-invocation routing, and the Claude/Codex proxy core work today. The standalone Web console, reversible CC-Switch takeover, daemon lifecycle, and built-in usage ledger are under development. See the status table before relying on a command.
 
-## Why
+## Why CPR
 
-`claude code` / `codex` / `opencode` each pick their upstream from env vars or a config file. If you want one terminal on DeepSeek and another on iFlytek GLM, you're stuck juggling env exports or config edits. And `codex` can't talk to most domestic providers at all — they don't expose the `/responses` endpoint it requires.
+- Keep provider credentials and generated Codex homes under CPR's own data directory, isolated from MultiCC.
+- Select a provider per CLI invocation instead of repeatedly editing global environment variables.
+- Bridge Codex `/responses` traffic to chat-only upstreams such as DeepSeek.
+- Reuse the same routing core from another host while keeping session orchestration in that host.
+- Configure main-agent and sub-agent routes through one standalone product. The route engine exists; persistence, statistics, and the Web workflow are being completed.
 
-`cli-provider-router` fixes both:
+## Feature status
 
-- **Per-call routing**: wrap any CLI invocation with a provider name, get the right env injected. No config wrestling.
-- **Protocol bridge**: a local proxy translates `codex`'s `/responses` ↔ `/chat/completions`, so it can reach chat-only providers.
-- **Main/subagent routing**: one Claude or Codex session can keep its main agent on one provider and route worker/explorer subagents through another provider.
+| Capability | Status | Interface |
+|---|---|---|
+| Provider add/list/show/remove | Available | `cpr add`, `list`, `show`, `rm` |
+| Read-only import from CC-Switch | Available | `cpr import` |
+| Per-invocation Claude/Codex routing | Available | `cpr use` |
+| Claude and Codex protocol proxy core | Available | Library API; `cpr proxy start` runs in foreground |
+| Reversible CC-Switch endpoint takeover | In development | Planned CLI and Web console |
+| Main/sub-agent route editor | In development | Planned Web console |
+| Persistent usage statistics | In development | Planned Web console and query API |
+| Background daemon lifecycle | In development | Planned `cpr serve/start/stop/status` |
 
-It keeps its **own** provider store (`~/.cli-provider-router/providers.json`), and can **import** (read-only) from [`cc-switch`](https://github.com/farion1231/cc-switch) so you don't reconfigure from scratch.
+## CC-Switch: import, MultiCC sync, and CPR takeover are different
 
-## Install
+These operations must not be treated as aliases:
+
+- **CPR read-only import (available):** `cpr import` copies provider data from CC-Switch into CPR's own store. It does not write to CC-Switch.
+- **MultiCC CC-Switch sync:** a MultiCC-owned feature that reads/copies CC-Switch provider data for MultiCC. MultiCC keeps its own proxy and session behavior. CPR does not replace or silently change this workflow.
+- **CPR reversible takeover (in development):** a standalone CPR feature. It will first create and verify a local snapshot of the original CC-Switch endpoints, then transactionally replace selected endpoints with CPR's local proxy URLs, and later restore the original endpoint fields. It is an opt-in write operation with preview, conflict detection, and recovery controls.
+
+The takeover safety contract is documented in [docs/ccswitch-safety.md](docs/ccswitch-safety.md). Until that implementation lands, CPR only performs read-only import.
+
+## Installation
+
+### Current supported method: fixed source checkout
+
+The npm package has **not been published yet**, and there is no supported `latest` installer. Do not use `npm install -g cli-provider-router` or `npx cli-provider-router` yet.
+
+Install from a reviewed commit or tag and pass the exact package version to the installer:
 
 ```bash
-npm install -g cli-provider-router
+git clone https://github.com/lsjwzh/cli-provider-router.git
+cd cli-provider-router
+git checkout <reviewed-commit-or-tag>
+VERSION="$(node -p "require('./package.json').version")"
+./scripts/install.sh --source "$PWD" --version "$VERSION"
 ```
 
-Or use without install: `npx cli-provider-router ...` / `npx cpr ...`
+Windows PowerShell:
 
-## CLI quick start
+```powershell
+git clone https://github.com/lsjwzh/cli-provider-router.git
+Set-Location cli-provider-router
+git checkout <reviewed-commit-or-tag>
+$Version = node -p "require('./package.json').version"
+.\scripts\install.ps1 -Source $PWD.Path -Version $Version
+```
+
+The installer refuses a version that differs from `package.json`, builds a package from the selected checkout, lets npm verify dependency integrity, checks JavaScript syntax, and runs `cpr --version` plus `cpr doctor`. It installs application versions under `CPR_INSTALL_ROOT` and preserves user data in `CPR_HOME`.
+
+Default locations:
+
+| Setting | macOS/Linux | Windows |
+|---|---|---|
+| `CPR_HOME` | `~/.cli-provider-router` | `%USERPROFILE%\.cli-provider-router` |
+| `CPR_INSTALL_ROOT` | `~/.local/share/cli-provider-router` | `%LOCALAPPDATA%\cli-provider-router` |
+| command shim | `~/.local/bin/cpr` | `%LOCALAPPDATA%\Microsoft\WindowsApps\cpr.cmd` |
+
+Add the command-shim directory to `PATH` if it is not already present. `CPR_BIN_DIR` overrides it. The generated launcher exports both `CPR_HOME` and a compatible `CPR_DATA_FILE` path.
+
+### Upgrade from another fixed checkout
 
 ```bash
-# Add a provider
-cpr add deepseek --app claude \
-  --base-url https://api.deepseek.com --token sk-xxx --model deepseek-chat
+cd cli-provider-router
+git fetch --tags origin
+git checkout <reviewed-new-commit-or-tag>
+VERSION="$(node -p "require('./package.json').version")"
+./scripts/upgrade.sh --source "$PWD" --version "$VERSION"
+```
 
-# Import from cc-switch (read-only — never writes back)
+```powershell
+git fetch --tags origin
+git checkout <reviewed-new-commit-or-tag>
+$Version = node -p "require('./package.json').version"
+.\scripts\upgrade.ps1 -Source $PWD.Path -Version $Version
+```
+
+Upgrade creates a timestamped backup under the install root, installs side-by-side, runs health checks, and rolls the active application pointer back if installation fails. It does not delete `CPR_HOME`.
+
+### Uninstall
+
+```bash
+./scripts/uninstall.sh
+# Explicitly delete data too:
+./scripts/uninstall.sh --purge
+```
+
+```powershell
+.\scripts\uninstall.ps1
+# Explicitly delete data too:
+.\scripts\uninstall.ps1 -Purge
+```
+
+Uninstall preserves `CPR_HOME` unless purge is explicitly requested. It refuses to uninstall while the CPR CC-Switch integration state says takeover is active; restore CC-Switch first. This guard is already enforced by the scripts even while the takeover UI is still under development.
+
+## Quick start (available commands)
+
+```bash
+# Add a Claude-compatible provider
+cpr add deepseek --app claude \
+  --base-url https://api.deepseek.com \
+  --token sk-xxx \
+  --model deepseek-chat
+
+# Read-only import from CC-Switch
 cpr import
 
-# List
 cpr list
+cpr show deepseek --app claude
 
-# Use a provider to run a CLI — env is injected, TTY is preserved
-cpr use deepseek -- claude -p "write quicksort in python"
-cpr use xfyun-glm -- codex exec "implement this feature"
-cpr use deepseek -- claude        # interactive mode works too
+# Route one command; stdio and exit status are preserved
+cpr use deepseek -- claude -p "write quicksort in Python"
 
-# codex → chat-only provider: start the protocol proxy, point codex at it
+# Run the current foreground proxy (Ctrl-C to stop)
 cpr proxy start --port 4567
-cpr use xfyun-glm -- codex        # routes through the local proxy
 
-# Diagnostics
 cpr doctor
 ```
 
-`cpr use <provider> -- <cmd...>` spawns the command with the provider's env merged in and `stdio: inherit`, so colors, interactive prompts, and exit codes all pass through.
+`cpr proxy status` and `stop` currently explain that the proxy is foreground-only. Do not treat them as daemon controls.
 
 ## Library API
-
-For hosts that manage sessions themselves (e.g. [multicc](https://github.com/lsjwzh/multicc)):
 
 ```js
 const cpr = require('cli-provider-router');
 
 const store = cpr.createStore({
-  dataFile: '~/.cli-provider-router/providers.json', // configurable
-  ccSwitchDb: '~/.cc-switch/cc-switch.db',           // import source
+  dataFile: '/absolute/path/to/providers.json',
+  ccSwitchDb: '/absolute/path/to/cc-switch.db',
 });
 
-store.listProviders('claude');           // -> [{ id, name, appType, ... }]
-store.getProvider('claude', id);          // -> full provider (with settingsConfig)
-store.getProviderSummary('claude', id);   // -> UI-friendly { baseUrl, model, tokenMask, modelOptions, aliasOnly, aliasMap }
-store.createProvider({ appType: 'claude', name, baseUrl, authToken, model, models });
-store.updateProvider('claude', id, { ... });
-store.deleteProvider('claude', id);
-store.importFromCcSwitch();               // -> { imported, updated, total }
-
-// The core: compute the env to inject when spawning a CLI for a provider.
-// `store` is passed in so spawn-env can look the provider up; `model` is an
-// optional per-invocation override.
-const r = cpr.buildChildEnv(process.env, { cli: 'claude', providerId: 'xxx', store });
-// -> { env, skipDefaultModel, aliasOnly, providerModel, providerModels, providerName, codexHome }
-// spawn('claude', args, { env: { ...process.env, ...r.env } })
-
-// Prepare child configuration. Use the same path when mounting the proxy.
-cpr.applyClaudeProxyEnv(env, {
-  enabled: true, providerId, sessionId, subagent: { providerId: subId, model: subModel },
-  port: 3000, claudeProxyPath: '/claude-proxy', store,
-});
-cpr.applyCodexProxyConfig(env, {
-  providerId, sessionId, subagent: { providerId: subId, model: subModel },
-  port: 3000, codexProxyPath: '/codex-proxy', store,
+const provider = store.createProvider({
+  appType: 'claude',
+  name: 'deepseek',
+  baseUrl: 'https://api.deepseek.com',
+  authToken: process.env.DEEPSEEK_API_KEY,
+  model: 'deepseek-chat',
 });
 
-// Mount handlers on an Express-compatible host. mountPath remains a supported
-// alias, but claudeProxyPath/codexProxyPath keep prepare and mount options aligned.
-const usageSink = event => recordUsage(event);
+const child = cpr.buildChildEnv(process.env, {
+  cli: 'claude',
+  providerId: provider.id,
+  store,
+});
+
+// Mount proxy handlers on an Express-compatible application.
 cpr.mountClaudeProxy(app, {
-  claudeProxyPath: '/claude-proxy', getProvider: (t, id) => store.getProvider(t, id), usageSink,
+  claudeProxyPath: '/claude-proxy',
+  getProvider: (type, id) => store.getProvider(type, id),
+  usageSink: event => recordUsage(event),
 });
+
 cpr.mountCodexProxy(app, {
-  codexProxyPath: '/codex-proxy', getProvider: (t, id) => store.getProvider(t, id), usageSink,
+  codexProxyPath: '/codex-proxy',
+  getProvider: (type, id) => store.getProvider(type, id),
+  usageSink: event => recordUsage(event),
 });
 ```
 
-### Design notes
+The proxy emits normalized usage events but the current release does not persist them. See [docs/agent-routing.md](docs/agent-routing.md) for route boundaries and current role granularity.
 
-- **Host owns sessions and policy.** The package prepares env/config and routes requests using host-supplied provider lookup, paths, credentials and session IDs. It does not provide MultiCC provider CRUD, Aux orchestration, UI state or token persistence.
-- **No usage storage.** `onUsage(event)` and its `usageSink` alias receive `{ sessionId, role, providerId, providerName, model, isStream, usage }`. `usage` contains `inputTokens`, `outputTokens`, `cacheWrite` and `cacheRead`; the host decides how to aggregate or persist it.
-- **express is an optional peer dep.** `mountXxxProxy(app, …)` accepts any express-compatible app; `createHandler()` is also exported for custom routing.
-- **SQLite support is optional.** `better-sqlite3` is only needed by the legacy SQLite-backed store integration. Its supported range is `>=11.10.0 <13`, so npm can reuse a host's compatible 11.x or 12.x native module. npm may still attempt to fetch and build it on install, but a native-build failure is non-fatal — the package works without it, and the legacy SQLite import path degrades gracefully. (Note: better-sqlite3 12.x drops Node 18/19 from its engines, so on Node 18/19 prefer an 11.x build.)
-- **Configurable paths.** Pass matching `claudeProxyPath`/`codexProxyPath` to both prepare and mount calls. `createStore({ dataFile, ccSwitchDb })` controls package-owned data paths.
-- **Stable proxy helpers.** The package entry exports `parseClaudeProxyUrl`, `decodeClaudeRoutedModel`, `readOfficialOAuthToken`, `normalizeResponsesUsage` and the Codex transform helpers for host integration tests.
+## Data and security
 
-## Supported CLIs
+- Keep `CPR_HOME` private; it may contain provider credentials and generated CLI configuration.
+- The standalone service is designed to bind to `127.0.0.1` by default. Remote exposure will require explicit authentication and TLS termination.
+- Secrets must never appear in bug reports, screenshots, logs, or committed fixtures.
+- CC-Switch takeover will use a verified SQLite snapshot and field-level restore, not an uncoordinated file copy.
 
-| CLI | Routing mechanism | Chat-only provider support |
-|---|---|---|
-| `claude` (claude-code) | `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_MODEL` + alias tiers | n/a (speaks `/v1/messages`) |
-| `codex` | `CODEX_HOME` (per-provider auth + config.toml) | via the bundled Responses↔Chat proxy |
-| `opencode` / `zcode` | native config passthrough | n/a |
+Read [docs/data-and-security.md](docs/data-and-security.md) and [SECURITY.md](SECURITY.md) before operating on production credentials.
 
-## Provider model
+## Development
 
-A provider mirrors cc-switch's shape so import/export is uniform:
-
-```js
-{
-  id, name, appType,            // 'claude' | 'codex'
-  source: 'ccswitch' | 'manual',
-  settingsConfig: {
-    env: { ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL, ANTHROPIC_DEFAULT_*_MODEL }, // claude
-    config: '<toml>',           // codex
-    auth: { OPENAI_API_KEY },   // codex
-    modelCatalog: { models: [{ model }] },
-    proxyTarget: { baseUrl, apiKey, mode },  // codex protocol-bridge target
-  }
-}
+```bash
+npm install
+npm test
+npm run lint
+npm run test:scripts
 ```
 
-`store.summary()` derives the UI-friendly fields: `baseUrl`, `model`, `tokenMask`, `modelOptions`, `aliasOnly`, `aliasMap`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for change requirements and [CHANGELOG.md](CHANGELOG.md) for release status.
 
 ## License
 
