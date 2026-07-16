@@ -4,7 +4,7 @@
 
 [English](README.md) · [架构](docs/architecture.md) · [安全策略](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
 
-> 项目状态：**早期开发阶段**。Provider 存储、只读导入 CC-Switch、单次调用路由、Claude/Codex 代理核心已经可用。独立 Web 控制台、可逆 CC-Switch 接管、后台服务生命周期和内置用量账本仍在开发。请以功能状态表为准。
+> 项目状态：**早期开发阶段**。当前支持源码安装，npm 尚未发布。Provider 路由、双端口托管服务、本地 Web 控制台、可逆 CC-Switch 接管、路由配置和用量账本均已实现并有集成测试。
 
 ## 为什么需要 CPR
 
@@ -12,7 +12,7 @@
 - 每次启动 CLI 时单独选择 Provider，不再反复修改全局环境变量。
 - 把 Codex 的 `/responses` 请求桥接到只支持 `/chat/completions` 的上游。
 - 路由内核可以被 MultiCC 等宿主复用，但 Session 和 Agent 编排仍由宿主负责。
-- 主 Agent、子 Agent 的路由核心属于 CPR。配置持久化、统计和 Web 操作闭环正在补齐。
+- 主 Agent、子 Agent 的路由核心属于 CPR，可在本地 Web 控制台配置并查看统计。
 
 ## 功能状态
 
@@ -21,11 +21,11 @@
 | Provider 增删查 | 已可用 | `cpr add/list/show/rm` |
 | 从 CC-Switch 只读导入 | 已可用 | `cpr import` |
 | Claude/Codex 单次调用路由 | 已可用 | `cpr use` |
-| Claude/Codex 协议代理核心 | 已可用 | 库 API；`cpr proxy start` 前台运行 |
-| 可逆 CC-Switch endpoint 接管 | 开发中 | 规划中的 CLI 和 Web 控制台 |
-| 主/子 Agent 路由编辑器 | 开发中 | 规划中的 Web 控制台 |
-| 持久化用量统计 | 开发中 | 规划中的 Web 和查询 API |
-| 后台 daemon 生命周期 | 开发中 | 规划中的 `serve/start/stop/status` |
+| Claude/Codex 协议代理核心 | 已可用 | 库 API 和托管服务 |
+| 可逆 CC-Switch endpoint 接管 | 已可用 | Web 预览/快照/应用/恢复 + gateway |
+| 主/子 Agent 路由编辑器 | 已可用 | Web 控制台 |
+| 持久化用量统计 | 已可用 | `cpr usage` 和 Web 控制台 |
+| 后台服务生命周期 | 已可用 | `cpr serve/start/status/stop/restart` |
 
 ## 务必区分三种 CC-Switch 功能
 
@@ -33,9 +33,9 @@
 
 - **CPR 只读导入（已可用）**：`cpr import` 把 CC-Switch Provider 数据复制到 CPR 自己的 store，绝不回写 CC-Switch。
 - **MultiCC 的 CC-Switch 同步**：由 MultiCC 自己负责，只读取/复制 CC-Switch 数据供 MultiCC 使用；MultiCC 继续采用自己的默认代理和 Session 逻辑。CPR 不替换、不暗改这条链路。
-- **CPR 可逆接管（开发中）**：CPR 的独立功能。先在 CPR 本地生成并校验 CC-Switch 原始 endpoint 快照，再由事务把选中的 endpoint 改为 CPR 本地代理 URL；用户可以恢复原字段。它是显式写操作，必须支持预览、冲突检测和灾难恢复。
+- **CPR 可逆接管（已可用）**：CPR 的独立功能。先在 CPR 本地生成并校验 CC-Switch 原始 endpoint 快照，再由事务把选中的 endpoint 改为 CPR 本地代理 URL；恢复时只还原受管理字段。流式 gateway 只从 active state 对应的不可变快照读取上游，并对本机回环和异常状态 fail-closed。
 
-完整安全约束见 [docs/ccswitch-safety.md](docs/ccswitch-safety.md)。可逆接管正式完成前，当前 CPR 只执行只读导入。
+完整安全约束见 [docs/ccswitch-safety.md](docs/ccswitch-safety.md)。只读导入仍是独立操作，绝不会自动启用接管。
 
 ## 安装
 
@@ -107,7 +107,7 @@ $Version = node -p "require('./package.json').version"
 .\scripts\uninstall.ps1 -Purge # 明确删除数据
 ```
 
-默认保留 `CPR_HOME`。如果 CPR 集成状态显示 CC-Switch 正处于接管状态，脚本会拒绝卸载，必须先恢复 CC-Switch。即使接管 UI 仍在开发，这个卸载保护已经存在。
+默认保留 `CPR_HOME`。如果 CPR 集成状态显示 CC-Switch 正处于接管状态，脚本会拒绝卸载，必须先从 Web 控制台恢复 CC-Switch。
 
 ## 快速开始（当前可用命令）
 
@@ -121,11 +121,13 @@ cpr import              # 只读导入
 cpr list
 cpr show deepseek --app claude
 cpr use deepseek -- claude -p "用 Python 写快速排序"
-cpr proxy start --port 4567  # 当前是前台进程，Ctrl-C 结束
+cpr start --port 4567 --web-port 4568
+cpr status                    # 输出 Web URL 和 0600 token 文件路径
+cpr serve --port 4567 --web-port 4568  # 前台模式
 cpr doctor
 ```
 
-当前 `cpr proxy status/stop` 只会提示代理是前台模式，不是 daemon 管理命令。
+Web 控制台默认位于 `http://127.0.0.1:4568`，包含 Dashboard、Provider、CC-Switch 预览/快照/应用/恢复、Agent Routing、Usage 和 Settings。`cpr proxy start/status/stop/restart` 是托管服务命令的兼容别名，停止时两个监听端口会同时关闭。
 
 ## 子 Agent 路由和统计边界
 
@@ -135,7 +137,7 @@ cpr doctor
 - CPR 独立模式将负责规则持久化、用量账本和 Web 页面。
 - MultiCC 负责 Session、Task、Workflow、worktree、dispatch 等编排，并把 Session/role 上下文传给 CPR。
 
-当前代理已经能产生规范化用量事件，但本版本尚未在 standalone 模式持久化。详见 [docs/agent-routing.md](docs/agent-routing.md)。
+standalone 服务会持久化规范化用量事件，并通过 CLI/Web 查询。详见 [docs/agent-routing.md](docs/agent-routing.md)。
 
 ## 数据与安全
 

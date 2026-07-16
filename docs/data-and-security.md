@@ -21,7 +21,7 @@ On Unix, directories should be mode `0700` and files containing secrets `0600`. 
 
 Routine logs may contain timestamps, route IDs, provider IDs/names, model names, status codes, durations, and token counts. They must not contain authorization headers, raw tokens, prompts, tool arguments, responses, cookies, or copied configuration blobs.
 
-The planned usage ledger stores metadata and normalized counts only. Diagnostic content capture must be opt-in, time-bounded, visibly active, and easy to delete.
+The usage ledger stores metadata and normalized counts only. Diagnostic content capture must be opt-in, time-bounded, visibly active, and easy to delete.
 
 ## Network exposure
 

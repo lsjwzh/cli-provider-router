@@ -4,7 +4,7 @@ Route Claude Code and Codex to different upstream providers without changing the
 
 [简体中文](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
-> Project status: **early development**. Provider storage, read-only CC-Switch import, per-invocation routing, and the Claude/Codex proxy core work today. The standalone Web console, reversible CC-Switch takeover, daemon lifecycle, and built-in usage ledger are under development. See the status table before relying on a command.
+> Project status: **early development**. Source installation is supported; npm is not published yet. Provider routing, the dual-port managed service, local Web console, reversible CC-Switch takeover, route profiles, and usage ledger are implemented and covered by integration tests.
 
 ## Why CPR
 
@@ -12,7 +12,7 @@ Route Claude Code and Codex to different upstream providers without changing the
 - Select a provider per CLI invocation instead of repeatedly editing global environment variables.
 - Bridge Codex `/responses` traffic to chat-only upstreams such as DeepSeek.
 - Reuse the same routing core from another host while keeping session orchestration in that host.
-- Configure main-agent and sub-agent routes through one standalone product. The route engine exists; persistence, statistics, and the Web workflow are being completed.
+- Configure main-agent and sub-agent routes, inspect statistics, and manage CC-Switch takeover from one local Web console.
 
 ## Feature status
 
@@ -21,11 +21,11 @@ Route Claude Code and Codex to different upstream providers without changing the
 | Provider add/list/show/remove | Available | `cpr add`, `list`, `show`, `rm` |
 | Read-only import from CC-Switch | Available | `cpr import` |
 | Per-invocation Claude/Codex routing | Available | `cpr use` |
-| Claude and Codex protocol proxy core | Available | Library API; `cpr proxy start` runs in foreground |
-| Reversible CC-Switch endpoint takeover | In development | Planned CLI and Web console |
-| Main/sub-agent route editor | In development | Planned Web console |
-| Persistent usage statistics | In development | Planned Web console and query API |
-| Background daemon lifecycle | In development | Planned `cpr serve/start/stop/status` |
+| Claude and Codex protocol proxy core | Available | Library API and managed service |
+| Reversible CC-Switch endpoint takeover | Available | Web preview/snapshot/apply/restore + gateway |
+| Main/sub-agent route editor | Available | Web console |
+| Persistent usage statistics | Available | `cpr usage` and Web console |
+| Background service lifecycle | Available | `cpr serve/start/status/stop/restart` |
 
 ## CC-Switch: import, MultiCC sync, and CPR takeover are different
 
@@ -33,9 +33,9 @@ These operations must not be treated as aliases:
 
 - **CPR read-only import (available):** `cpr import` copies provider data from CC-Switch into CPR's own store. It does not write to CC-Switch.
 - **MultiCC CC-Switch sync:** a MultiCC-owned feature that reads/copies CC-Switch provider data for MultiCC. MultiCC keeps its own proxy and session behavior. CPR does not replace or silently change this workflow.
-- **CPR reversible takeover (in development):** a standalone CPR feature. It will first create and verify a local snapshot of the original CC-Switch endpoints, then transactionally replace selected endpoints with CPR's local proxy URLs, and later restore the original endpoint fields. It is an opt-in write operation with preview, conflict detection, and recovery controls.
+- **CPR reversible takeover (available):** a standalone CPR feature. It creates and verifies a local snapshot of the original CC-Switch endpoints, transactionally replaces selected endpoints with CPR's local proxy URLs, and restores only the managed endpoint fields. It is an opt-in write operation with preview, conflict detection, recovery controls, and a fail-closed streaming gateway whose upstream comes only from the active immutable snapshot map.
 
-The takeover safety contract is documented in [docs/ccswitch-safety.md](docs/ccswitch-safety.md). Until that implementation lands, CPR only performs read-only import.
+The takeover safety contract and recovery behavior are documented in [docs/ccswitch-safety.md](docs/ccswitch-safety.md). Read-only import remains a separate operation and never activates takeover.
 
 ## Installation
 
@@ -108,7 +108,7 @@ Upgrade creates a timestamped backup under the install root, installs side-by-si
 .\scripts\uninstall.ps1 -Purge
 ```
 
-Uninstall preserves `CPR_HOME` unless purge is explicitly requested. It refuses to uninstall while the CPR CC-Switch integration state says takeover is active; restore CC-Switch first. This guard is already enforced by the scripts even while the takeover UI is still under development.
+Uninstall preserves `CPR_HOME` unless purge is explicitly requested. It refuses to uninstall while the CPR CC-Switch integration state says takeover is active; restore CC-Switch from the Web console first.
 
 ## Quick start (available commands)
 
@@ -128,13 +128,20 @@ cpr show deepseek --app claude
 # Route one command; stdio and exit status are preserved
 cpr use deepseek -- claude -p "write quicksort in Python"
 
-# Run the current foreground proxy (Ctrl-C to stop)
-cpr proxy start --port 4567
+# Start proxy and Web console together
+cpr start --port 4567 --web-port 4568
+cpr status
+# Open http://127.0.0.1:4568; status prints the 0600 admin-token path.
+
+# Foreground mode for development/process managers
+cpr serve --port 4567 --web-port 4568
 
 cpr doctor
 ```
 
-`cpr proxy status` and `stop` currently explain that the proxy is foreground-only. Do not treat them as daemon controls.
+`cpr proxy start/status/stop/restart` remains a compatibility alias for the managed service commands. A normal stop shuts down both listeners in the same process.
+
+The Web console provides Dashboard, Providers, CC-Switch preview/snapshot/apply/restore, Agent Routing, Usage, and Settings. Both listeners bind to `127.0.0.1`; the Web port defaults to proxy port + 1.
 
 ## Library API
 
@@ -172,16 +179,19 @@ cpr.mountCodexProxy(app, {
   getProvider: (type, id) => store.getProvider(type, id),
   usageSink: event => recordUsage(event),
 });
+
+// Must be mounted before express.json() so request/response streams stay intact.
+cpr.mountCcSwitchGateway(app, { home: '/absolute/CPR_HOME' });
 ```
 
-The proxy emits normalized usage events but the current release does not persist them. See [docs/agent-routing.md](docs/agent-routing.md) for route boundaries and current role granularity.
+The standalone service persists normalized usage events and exposes CLI/Web queries. Library hosts can still consume the callback without using CPR's ledger. See [docs/agent-routing.md](docs/agent-routing.md) for route boundaries and current role granularity.
 
 ## Data and security
 
 - Keep `CPR_HOME` private; it may contain provider credentials and generated CLI configuration.
 - The standalone service is designed to bind to `127.0.0.1` by default. Remote exposure will require explicit authentication and TLS termination.
 - Secrets must never appear in bug reports, screenshots, logs, or committed fixtures.
-- CC-Switch takeover will use a verified SQLite snapshot and field-level restore, not an uncoordinated file copy.
+- CC-Switch takeover uses a verified SQLite snapshot and field-level restore, not an uncoordinated file copy.
 
 Read [docs/data-and-security.md](docs/data-and-security.md) and [SECURITY.md](SECURITY.md) before operating on production credentials.
 

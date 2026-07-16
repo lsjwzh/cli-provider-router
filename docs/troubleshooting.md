@@ -27,17 +27,18 @@ Optional SQLite support uses `better-sqlite3`. If its native module is unavailab
 
 ## Provider changes in CC-Switch are not reflected
 
-CPR keeps its own provider store. Run `cpr import` again to copy current data. This is different from MultiCC's own CC-Switch synchronization and from CPR's upcoming reversible takeover.
+CPR keeps its own provider store. Run `cpr import` again to copy current data. This is different from MultiCC's own CC-Switch synchronization and from CPR's opt-in reversible takeover.
 
 ## Codex cannot reach a chat-only provider
 
-Run the foreground proxy and leave the terminal open:
+Start the managed proxy and Web service:
 
 ```bash
-cpr proxy start --port 4567
+cpr start --port 4567 --web-port 4568
+cpr status
 ```
 
-Then route Codex through a provider whose configuration requires the protocol bridge. Check `http://127.0.0.1:4567/health`. The current CLI does not provide a background daemon; `proxy stop/status` are informational.
+Then route Codex through a provider whose configuration requires the protocol bridge. Check `http://127.0.0.1:4567/health`. Use `cpr stop` to close both the proxy and Web listener; `cpr proxy ...` is a compatibility alias.
 
 ## Port already in use
 
@@ -49,7 +50,7 @@ Run `cpr doctor` and inspect the selected provider with `cpr show`. CPR strips i
 
 ## Uninstall refuses because takeover is active
 
-This is a safety guard. Restore CC-Switch endpoints through CPR before uninstalling. Reversible takeover is still under development; if a development build left integration state active, preserve `CPR_HOME` and its snapshots and report the exact commit through a private support channel. Do not delete the state or snapshots first.
+This is a safety guard. Open the local Web console, inspect CC-Switch status, and restore managed endpoints before uninstalling. If restore reports a conflict, preserve `CPR_HOME` and its snapshots and resolve the drift through the Web workflow or library API. Do not delete the state or snapshots first.
 
 ## Upgrade health check fails
 

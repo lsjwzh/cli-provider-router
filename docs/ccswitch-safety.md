@@ -2,7 +2,7 @@
 
 ## Status
 
-`cpr import` is available today and is read-only. Reversible endpoint takeover is **in development**. This document defines the acceptance criteria for that write feature; it is not a claim that the current CLI can already apply or restore a takeover.
+`cpr import` is read-only. Reversible endpoint takeover is available through the loopback Web console and library API. This document defines the safety contract enforced by the implementation.
 
 ## Not the MultiCC sync feature
 
@@ -46,6 +46,15 @@ Snapshots contain credentials and must never be uploaded or attached to issues.
 - Roll back the transaction on any validation or write failure.
 - Re-read the committed rows and compare them with the preview before reporting success.
 
+## Gateway requirements
+
+- Mount `/ccswitch/:appType/:providerId[/endpoint/:rowId]/*` before any JSON/body parser.
+- Resolve upstream only from the immutable endpoint map named by the active takeover state; never consult rewritten live rows.
+- Verify snapshot database and endpoint-map hashes before resolving a request.
+- Reject inactive/restored/conflict state, missing mappings, invalid paths, unsupported schemes, credentials embedded in URLs, and localhost/self-loop upstreams.
+- Preserve end-to-end authorization headers and stream request/response bodies without buffering.
+- Append remaining path segments and query parameters without allowing path traversal or replacing the snapshot base path.
+
 ## Restore requirements
 
 Normal restore is field-level, not whole-database replacement:
@@ -59,7 +68,7 @@ A full snapshot replacement is a separately labeled disaster-recovery operation.
 
 ## Web controls
 
-The Web console must expose status/schema detection, snapshot creation, diff preview, apply, restore, snapshot history, conflicts, and proxy-offline warnings. Destructive or write operations require CSRF protection and a second confirmation that names the affected providers.
+The Web console exposes status/schema detection, snapshot creation, diff preview, apply, restore, conflicts, and proxy health. Write operations require the loopback guard, admin token, same-origin checks, and typed confirmation.
 
 ## Shutdown and uninstall
 
