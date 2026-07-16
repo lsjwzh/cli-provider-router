@@ -48,9 +48,27 @@ Choose another loopback port and make sure all generated proxy configuration use
 
 Run `cpr doctor` and inspect the selected provider with `cpr show`. CPR strips inherited Anthropic routing variables before applying the selected provider, but wrapper scripts or shell aliases can still replace command arguments after CPR launches them.
 
+## A directly managed CLI cannot reach CPR
+
+Native CLI takeover writes loopback proxy URLs, so the managed service must be running on the same proxy port used during apply:
+
+```bash
+cpr status
+cpr start
+cpr cli-config status --cli claude
+```
+
+Use `--cli codex` for Codex. If you intentionally changed the CPR proxy port, restore the native configuration and apply again after previewing the new route. Do not hand-edit the generated CPR provider entries unless you are prepared to resolve drift.
+
+## Direct CLI restore reports drift
+
+CPR found a post-apply change in a managed native file and refused to overwrite it. Copy the current file somewhere private, inspect `cpr cli-config status --cli <claude|codex> --json`, and verify the active snapshot. Prefer reconciling the user change before restore. `--force --yes` restores the snapshot exactly and can discard the later edit.
+
+For Codex, `auth.json` is outside direct takeover and should not be deleted or edited as part of recovery.
+
 ## Uninstall refuses because takeover is active
 
-This is a safety guard. Open the local Web console, inspect CC-Switch status, and restore managed endpoints before uninstalling. If restore reports a conflict, preserve `CPR_HOME` and its snapshots and resolve the drift through the Web workflow or library API. Do not delete the state or snapshots first.
+This is a safety guard. Inspect both the CC-Switch and CLI Config pages. Restore managed CC-Switch endpoints and run `cpr cli-config restore --cli <claude|codex> --yes` for every active native CLI takeover before uninstalling. If restore reports a conflict, preserve `CPR_HOME` and its snapshots and resolve the drift through the Web/CLI workflow. Do not delete state or snapshots first, and do not expect uninstall to auto-restore configuration.
 
 ## Upgrade health check fails
 

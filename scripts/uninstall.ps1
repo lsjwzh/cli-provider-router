@@ -17,12 +17,32 @@ function Test-TakeoverActive([object]$State) {
     return $false
 }
 
+function Test-DirectCliTakeoverActive([object]$State) {
+    if ($null -eq $State -or $State -isnot [PSCustomObject]) { return $false }
+    if ($State.active -eq $false) { return $false }
+    if (-not [string]::IsNullOrWhiteSpace([string]$State.snapshotId)) { return $true }
+    if ($null -ne $State.appliedFiles) { return $true }
+    return @('active', 'applying', 'restoring') -contains ([string]$State.status).ToLowerInvariant()
+}
+
 foreach ($StateFile in @((Join-Path $CprHome 'data\integration-state.json'), (Join-Path $CprHome 'integration-state.json'))) {
     if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) { continue }
     try { $State = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json }
     catch { throw "cannot validate integration state ${StateFile}: $($_.Exception.Message)" }
     if (Test-TakeoverActive $State) {
         throw "CC-Switch takeover is active according to $StateFile. Restore CC-Switch endpoints before uninstalling."
+    }
+}
+
+$DirectStateDir = Join-Path $CprHome 'direct-cli-config\state'
+if (Test-Path -LiteralPath $DirectStateDir -PathType Container) {
+    foreach ($StateFile in Get-ChildItem -LiteralPath $DirectStateDir -Filter '*.json' -File) {
+        try { $State = Get-Content -LiteralPath $StateFile.FullName -Raw | ConvertFrom-Json }
+        catch { throw "cannot validate direct CLI takeover state $($StateFile.FullName): $($_.Exception.Message)" }
+        if (Test-DirectCliTakeoverActive $State) {
+            $Cli = if ([string]::IsNullOrWhiteSpace([string]$State.cli)) { 'native CLI' } else { [string]$State.cli }
+            throw "Direct $Cli configuration takeover is active according to $($StateFile.FullName). Run 'cpr cli-config restore --cli $Cli --yes' before uninstalling. CPR will not restore or delete native CLI configuration automatically."
+        }
     }
 }
 

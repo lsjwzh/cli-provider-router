@@ -9,7 +9,10 @@ Usage:
   uninstall.sh [--install-root DIR] [--bin-dir DIR] [--cpr-home DIR] [--purge]
 
 Data under CPR_HOME is preserved unless --purge is supplied. Uninstall is
-refused while CPR's integration state reports an active CC-Switch takeover.
+refused while CPR's integration state reports an active CC-Switch takeover or
+while CPR directly manages a native Claude/Codex configuration. Restore the
+affected configuration explicitly before uninstalling; this script never
+rewrites user CLI configuration automatically.
 EOF
 }
 
@@ -56,6 +59,40 @@ NODE
     exit 3
   fi
 done
+
+DIRECT_STATE_DIR="$CPR_HOME_VALUE/direct-cli-config/state"
+if [[ -d "$DIRECT_STATE_DIR" ]]; then
+  for state_file in "$DIRECT_STATE_DIR"/*.json; do
+    [[ -e "$state_file" ]] || continue
+    if ! node - "$state_file" <<'NODE'
+const fs = require('fs');
+const file = process.argv[2];
+let state;
+try { state = JSON.parse(fs.readFileSync(file, 'utf8')); }
+catch (error) {
+  console.error(`error: cannot validate direct CLI takeover state ${file}: ${error.message}`);
+  process.exit(2);
+}
+const active = state && typeof state === 'object' && (
+  state.active !== false && (
+    typeof state.snapshotId === 'string' ||
+    Array.isArray(state.appliedFiles) ||
+    ['active', 'applying', 'restoring'].includes(String(state.status || '').toLowerCase())
+  )
+);
+if (active) {
+  const cli = state.cli || 'native CLI';
+  console.error(`error: direct ${cli} configuration takeover is active according to ${file}`);
+  console.error(`Run cpr cli-config restore --cli ${cli} --yes before uninstalling cli-provider-router.`);
+  console.error('CPR will not restore or delete native CLI configuration automatically.');
+  process.exit(3);
+}
+NODE
+    then
+      exit 3
+    fi
+  done
+fi
 
 SHIM="$BIN_DIR/cpr"
 if [[ -L "$SHIM" ]]; then

@@ -32,7 +32,15 @@ test('installer suite has fixed-version, home, health and takeover guards', () =
   const uninstallSh = fs.readFileSync(path.join(scriptsDir, 'uninstall.sh'), 'utf8');
   assert.match(uninstallSh, /integration-state\.json/);
   assert.match(uninstallSh, /takeover is active/);
+  assert.match(uninstallSh, /direct-cli-config\/state/);
+  assert.match(uninstallSh, /cli-config restore/);
+  assert.match(uninstallSh, /will not restore or delete native CLI configuration automatically/);
   assert.match(uninstallSh, /--purge/);
+
+  const uninstallPs1 = fs.readFileSync(path.join(scriptsDir, 'uninstall.ps1'), 'utf8');
+  assert.match(uninstallPs1, /direct-cli-config\\state/);
+  assert.match(uninstallPs1, /cli-config restore/);
+  assert.match(uninstallPs1, /will not restore or delete native CLI configuration automatically/i);
 });
 
 test('source installer dry-run validates without writing installation data', () => {
@@ -68,6 +76,35 @@ test('uninstall refuses active CC-Switch takeover and preserves installation', (
   fs.rmSync(temp, { recursive: true, force: true });
 });
 
+test('uninstall and purge refuse active direct CLI takeover without modifying user state', () => {
+  for (const purge of [false, true]) {
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-script-direct-active-'));
+    const installRoot = path.join(temp, 'install');
+    const binDir = path.join(temp, 'bin');
+    const cprHome = path.join(temp, 'home');
+    const stateDir = path.join(cprHome, 'direct-cli-config', 'state');
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.mkdirSync(installRoot, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(installRoot, 'sentinel'), 'keep');
+    const stateFile = path.join(stateDir, 'claude.json');
+    fs.writeFileSync(stateFile, JSON.stringify({
+      cli: 'claude', snapshotId: 'snapshot-1', appliedFiles: [{ path: '/tmp/settings.json' }],
+    }));
+
+    const args = [path.join(scriptsDir, 'uninstall.sh'),
+      '--install-root', installRoot, '--bin-dir', binDir, '--cpr-home', cprHome];
+    if (purge) args.push('--purge');
+    const result = spawnSync('bash', args, { encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /direct claude configuration takeover is active/i);
+    assert.match(result.stderr, /cpr cli-config restore --cli claude --yes/);
+    assert.ok(fs.existsSync(path.join(installRoot, 'sentinel')));
+    assert.ok(fs.existsSync(stateFile));
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
 test('PowerShell scripts parse when pwsh is available', (t) => {
   const probe = spawnSync('pwsh', ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()'], { encoding: 'utf8' });
   if (probe.error && probe.error.code === 'ENOENT') {
@@ -83,12 +120,14 @@ test('PowerShell scripts parse when pwsh is available', (t) => {
   }
 });
 
-test('documentation distinguishes MultiCC sync from CPR takeover', () => {
-  for (const file of ['README.md', 'README.zh-CN.md', 'docs/ccswitch-safety.md']) {
+test('documentation distinguishes all four import, sync and takeover capabilities', () => {
+  for (const file of ['README.md', 'README.zh-CN.md', 'docs/architecture.md', 'docs/direct-cli-config.md']) {
     const text = fs.readFileSync(path.join(root, file), 'utf8');
     assert.match(text, /MultiCC/);
     assert.match(text, /takeover|接管/i);
     assert.match(text, /read-only|只读/i);
+    assert.match(text, /direct CLI|原生 CLI/i);
+    assert.match(text, /without CC-Switch|无需 CC-Switch|没有 CC-Switch/i);
   }
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   assert.match(readme, /npm package has \*\*not been published yet\*\*/);
