@@ -18,12 +18,18 @@ function startServer(options = {}) {
   const dataFile = options.dataFile || process.env.CPR_DATA_FILE || paths.providersFile;
   const ccDb = options.ccSwitchDb || process.env.CPR_CC_SWITCH_DB || undefined;
   const store = cpr.createStore({ dataFile, ccSwitchDb: ccDb, paths });
+  const usageLedger = options.usageLedger || cpr.createUsageLedger({ paths });
+  usageLedger.prune();
+  const onUsageEvent = (event) => {
+    try { usageLedger.recordProxyUsage(event); }
+    catch (error) { console.error(`[cli-provider-router] usage ledger write failed: ${error.message}`); }
+  };
   const getProvider = (type, id) => store.getProvider(type, id);
   const app = express();
   app.use(express.json({ limit: '25mb' }));
   app.get('/health', (_req, res) => res.json({ ok: true, pid: process.pid, port, home: paths.home, startedAt }));
-  cpr.mountCodexProxy(app, { getProvider, getPort: () => port });
-  cpr.mountClaudeProxy(app, { getProvider, onUsage: options.onUsage || (() => {}) });
+  cpr.mountCodexProxy(app, { getProvider, getPort: () => port, onUsage: options.onUsage, onUsageEvent });
+  cpr.mountClaudeProxy(app, { getProvider, onUsage: options.onUsage, onUsageEvent });
 
   const startedAt = Date.now();
   const server = app.listen(port, '127.0.0.1', () => {
@@ -55,7 +61,7 @@ function startServer(options = {}) {
     setTimeout(() => process.exit(1), 3000).unref();
   }
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => close(signal));
-  server.cpr = { paths, port, close };
+  server.cpr = { paths, port, close, usageLedger };
   return server;
 }
 

@@ -31,6 +31,8 @@ function store() {
   return cpr.createStore({ dataFile: DATA_FILE, ccSwitchDb: CC_DB, paths: PATHS });
 }
 
+function usageLedger() { return cpr.createUsageLedger({ paths: PATHS }); }
+
 // ── tiny arg parser ──────────────────────────────────────────────────────────
 // Splits argv into { _: positionals, flags: {k:v|true} }, stopping at `--`
 // (everything after `--` is returned verbatim in `rest`).
@@ -278,6 +280,67 @@ function cmdProxy(args) {
   return cmdService(sub, args);
 }
 
+function usageFilters(flags) {
+  return {
+    from: flags.from,
+    to: flags.to,
+    role: flags.role,
+    providerId: flags.provider || flags['provider-id'],
+    model: flags.model,
+    externalSessionId: flags.session || flags['session-id'],
+    protocol: flags.protocol,
+    source: flags.source,
+    status: flags.status,
+  };
+}
+
+function emptyUsageTotal() {
+  return { events: 0, observedEvents: 0, unobservableEvents: 0, inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, exactEvents: 0, reconciledEvents: 0, totalLatencyMs: 0, avgLatencyMs: 0 };
+}
+
+function cmdUsage(args) {
+  const sub = args._[0] || 'summary';
+  const ledger = usageLedger();
+  if (sub === 'summary') {
+    const filters = usageFilters(args.flags);
+    const result = {
+      filters,
+      total: ledger.rollup(filters)[0] || emptyUsageTotal(),
+      byDate: ledger.rollup(filters, ['date']),
+      byRole: ledger.rollup(filters, ['role']),
+      byProvider: ledger.rollup(filters, ['providerId']),
+      byModel: ledger.rollup(filters, ['model']),
+      bySession: ledger.rollup(filters, ['externalSessionId']),
+    };
+    if (args.flags.json) return console.log(JSON.stringify(result, null, 2));
+    console.log(C.bold('Usage summary'));
+    console.log(`  events: ${result.total.events} (${result.total.unobservableEvents} unobservable)`);
+    console.log(`  tokens: ${result.total.totalTokens}  input ${result.total.inputTokens}  output ${result.total.outputTokens}`);
+    console.log(`  cache:  read ${result.total.cacheRead}  write ${result.total.cacheWrite}`);
+    if (result.byRole.length) {
+      console.log(C.bold('\nBy role'));
+      for (const row of result.byRole) console.log(`  ${row.role}: ${row.totalTokens} tokens / ${row.events} events`);
+    }
+    return;
+  }
+  if (sub === 'retention') {
+    const policy = args.flags.days ? ledger.setRetentionDays(args.flags.days) : ledger.getPolicy();
+    if (args.flags.json) return console.log(JSON.stringify(policy, null, 2));
+    console.log(`usage retention: ${policy.retentionDays} days`);
+    return;
+  }
+  if (sub === 'clean' || sub === 'prune') {
+    const result = ledger.prune({
+      retentionDays: args.flags['retain-days'] || args.flags.days || undefined,
+      dryRun: !!args.flags['dry-run'],
+    });
+    if (args.flags.json) return console.log(JSON.stringify(result, null, 2));
+    console.log(`${result.dryRun ? 'would remove' : 'removed'} ${result.removedCount} usage shard(s); retention ${result.retentionDays} days`);
+    return;
+  }
+  die('usage: cpr usage summary [--json] | retention [--days N] | clean [--retain-days N] [--dry-run]');
+}
+
 // ── help ─────────────────────────────────────────────────────────────────────
 function help() {
   console.log(`${C.bold('cpr')} — cli-provider-router
@@ -299,6 +362,11 @@ ${C.bold('Standalone service')}
   cpr start [--port 4567]              background
   cpr status | stop | restart
   cpr proxy <action>                    compatibility alias
+
+${C.bold('Usage ledger')}
+  cpr usage summary [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--role main|sub|aux] [--json]
+  cpr usage retention [--days 90]
+  cpr usage clean [--retain-days 90] [--dry-run]
 
 ${C.bold('Other')}
   cpr doctor                         environment diagnostics
@@ -328,6 +396,7 @@ async function main() {
     case 'doctor': return cmdDoctor(args);
     case 'serve': case 'start': case 'status': case 'stop': case 'restart': return cmdService(cmd, args);
     case 'proxy': return cmdProxy(args);
+    case 'usage': return cmdUsage(args);
     default: die(`unknown command: ${cmd}\n  run \`cpr help\` for usage.`);
   }
 }
