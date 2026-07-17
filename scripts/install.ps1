@@ -71,6 +71,21 @@ try {
     & npm install --prefix $Stage --no-audit --no-fund --include=optional $Archive 'express@>=4'
     if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
 
+    function Test-SqliteRuntime([string]$Prefix) {
+        Push-Location $Prefix
+        try {
+            & node -e 'const r=require("./node_modules/cli-provider-router/lib/sqlite-runtime").sqliteRuntimeStatus(); process.exit(r.available ? 0 : 1)' *> $null
+            return ($LASTEXITCODE -eq 0)
+        } finally { Pop-Location }
+    }
+    if (-not (Test-SqliteRuntime $Stage)) {
+        Write-Host "Rebuilding optional SQLite support for $(& node --version) ..."
+        & npm rebuild --prefix $Stage better-sqlite3 *> $null
+    }
+    if (-not (Test-SqliteRuntime $Stage)) {
+        Write-Warning 'SQLite support is unavailable; CC-Switch features are disabled. Repair with: npm rebuild better-sqlite3'
+    }
+
     $CprCmd = Join-Path $Stage 'node_modules\.bin\cpr.cmd'
     if (-not (Test-Path -LiteralPath $CprCmd -PathType Leaf)) { throw 'installed cpr executable is missing' }
     $env:CPR_HOME = $CprHome

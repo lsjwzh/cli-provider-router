@@ -209,6 +209,9 @@ function cmdDoctor() {
   // cc-switch
   const ccDb = cpr.resolveCcDb(CC_DB);
   console.log(`  cc-switch db:    ${ccDb} ${cpr.ccSwitchAvailable(ccDb) ? C.green('(found)') : C.dim('(not found)')}`);
+  const sqlite = cpr.sqliteRuntimeStatus();
+  console.log(`  sqlite runtime:  ${sqlite.available ? C.green('(available)') : C.red('(unavailable)')}`);
+  if (!sqlite.available) console.log(`  repair:          ${sqlite.repair}`);
   // codex homes
   console.log(`  CPR home:        ${PATHS.home}`);
   console.log(`  codex homes:     ${PATHS.codexHomesDir}`);

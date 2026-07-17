@@ -23,6 +23,8 @@ test('installer suite has fixed-version, home, health and takeover guards', () =
   assert.match(installSh, /CPR_HOME_VALUE/);
   assert.match(installSh, /doctor/);
   assert.match(installSh, /SHA-256/);
+  assert.match(installSh, /sqliteRuntimeStatus/);
+  assert.match(installSh, /npm rebuild better-sqlite3/);
 
   const upgradeSh = fs.readFileSync(path.join(scriptsDir, 'upgrade.sh'), 'utf8');
   assert.match(upgradeSh, /cpr-home\.tar\.gz/);
@@ -41,6 +43,10 @@ test('installer suite has fixed-version, home, health and takeover guards', () =
   assert.match(uninstallPs1, /direct-cli-config\\state/);
   assert.match(uninstallPs1, /cli-config restore/);
   assert.match(uninstallPs1, /will not restore or delete native CLI configuration automatically/i);
+
+  const installPs1 = fs.readFileSync(path.join(scriptsDir, 'install.ps1'), 'utf8');
+  assert.match(installPs1, /sqliteRuntimeStatus/);
+  assert.match(installPs1, /npm rebuild better-sqlite3/);
 });
 
 test('source installer dry-run validates without writing installation data', () => {

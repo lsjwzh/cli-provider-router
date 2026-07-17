@@ -5,6 +5,7 @@ const http = require('http');
 const test = require('node:test');
 
 const { createWebServer } = require('../lib/web-api');
+const { sqliteUnavailableError } = require('../lib/sqlite-runtime');
 
 function request(port, requestPath, options = {}) {
   return new Promise((resolve, reject) => {
@@ -172,4 +173,36 @@ test('CC-Switch dangerous writes require preview-oriented confirmation and route
   assert.deepEqual(usage.json(), { available: true, data: [{ role: 'worker', protocol: 'openai-responses', tokens: { input: 12, output: 3, total: 15 } }] });
   const summary = await request(web.port, '/api/usage/summary', { headers: auth });
   assert.deepEqual(summary.json(), { available: true, data: [{ inputTokens: 12 }] });
+});
+
+test('CC-Switch Web status sanitizes a lazy SQLite binding failure and exposes repair guidance', async t => {
+  const deps = dependencies();
+  const fail = () => { throw sqliteUnavailableError('native-binding-unavailable'); };
+  deps.ccSwitch = { discover: fail, status: fail, preview: fail, snapshot: fail, apply: fail, restore: fail };
+  const web = await createWebServer({ ...deps, ccSwitchOptions: { dbPath: '/fixture/cc-switch.db', proxyBaseUrl: 'http://127.0.0.1:4567' } });
+  t.after(() => web.close());
+  const auth = { 'x-cpr-admin-token': web.adminToken };
+
+  for (const endpoint of ['/api/ccswitch/detect', '/api/ccswitch/status']) {
+    const response = await request(web.port, endpoint, { headers: auth });
+    assert.equal(response.status, 200);
+    assert.equal(response.json().available, false);
+    assert.equal(response.json().error, 'SQLITE_UNAVAILABLE');
+    assert.equal(response.json().repair, 'npm rebuild better-sqlite3');
+    assert.doesNotMatch(response.text, /bindings file|better_sqlite3\.node|node_modules/i);
+  }
+
+  const dashboard = await request(web.port, '/api/dashboard', { headers: auth });
+  assert.equal(dashboard.status, 200);
+  assert.equal(dashboard.json().ccSwitch.error, 'SQLITE_UNAVAILABLE');
+  assert.equal(dashboard.json().ccSwitch.repair, 'npm rebuild better-sqlite3');
+  assert.doesNotMatch(dashboard.text, /bindings file|better_sqlite3\.node|node_modules/i);
+
+  const snapshot = await request(web.port, '/api/ccswitch/snapshot', {
+    method: 'POST', headers: auth, body: { confirmation: 'CREATE SNAPSHOT' },
+  });
+  assert.equal(snapshot.status, 503);
+  assert.equal(snapshot.json().error, 'SQLITE_UNAVAILABLE');
+  assert.equal(snapshot.json().repair, 'npm rebuild better-sqlite3');
+  assert.doesNotMatch(snapshot.text, /bindings file|better_sqlite3\.node|node_modules/i);
 });

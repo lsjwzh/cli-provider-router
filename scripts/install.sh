@@ -102,6 +102,19 @@ mkdir -p "$STAGE"
 npm install --prefix "$STAGE" --no-audit --no-fund --include=optional \
   "$TARBALL" 'express@>=4'
 
+sqlite_runtime_ok() {
+  (cd -- "$STAGE" && node -e \
+    'const r=require("./node_modules/cli-provider-router/lib/sqlite-runtime").sqliteRuntimeStatus(); process.exit(r.available ? 0 : 1)') \
+    >/dev/null 2>&1
+}
+if ! sqlite_runtime_ok; then
+  echo "Rebuilding optional SQLite support for $(node --version) ..." >&2
+  npm rebuild --prefix "$STAGE" better-sqlite3 >/dev/null 2>&1 || true
+fi
+if ! sqlite_runtime_ok; then
+  echo "warning: SQLite support is unavailable; CC-Switch features are disabled. Repair with: npm rebuild better-sqlite3" >&2
+fi
+
 CPR_BIN="$STAGE/node_modules/.bin/cpr"
 [[ -x "$CPR_BIN" ]] || { echo "error: installed cpr executable is missing" >&2; exit 1; }
 INSTALLED_VERSION="$(CPR_HOME="$CPR_HOME_VALUE" CPR_DATA_FILE="$CPR_HOME_VALUE/data/providers.json" "$CPR_BIN" --version)"
