@@ -24,7 +24,14 @@ function resolveCommand(command, args) {
 
 function run(command, args, options = {}) {
   const invocation = resolveCommand(command, args);
-  const result = spawnSync(invocation.command, invocation.args, { cwd: root, encoding: 'utf8', timeout: 120000, ...options });
+  const shell = process.platform === 'win32' && /\.cmd$/i.test(invocation.command);
+  const result = spawnSync(invocation.command, invocation.args, {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 120000,
+    shell,
+    ...options,
+  });
   assert.ifError(result.error);
   assert.equal(result.status, 0, `${command} ${args.join(' ')}\n${result.stderr || result.stdout}`);
   return result;
