@@ -143,10 +143,15 @@ test('standalone proxy records exact usage and survives a service restart', asyn
   const store = cpr.createStore({ paths });
   const provider = store.createProvider({ appType: 'claude', name: 'Usage Relay', baseUrl: `http://127.0.0.1:${upstreamPort}`, authToken: 'secret', model: 'wire-model' });
   const controller = cpr.createServiceController({ paths, runner: path.join(__dirname, '..', 'cli', 'proxy-server.js'), port: servicePort });
+  const hop = cpr.createHopCredentialStore({ paths });
+  const credential = hop.issue({
+    cli: 'claude', providerId: provider.id, sessionId: 'external-42',
+    roleKind: 'main', routeName: 'main',
+  });
   try {
     await controller.start({ port: servicePort, timeoutMs: 8000 });
     const response = await fetch(`http://127.0.0.1:${servicePort}/claude-proxy/${provider.id}/external-42/v1/messages`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${credential.token}` },
       body: JSON.stringify({ model: 'wire-model', messages: [], max_tokens: 1 }),
     });
     assert.strictEqual(response.status, 200);

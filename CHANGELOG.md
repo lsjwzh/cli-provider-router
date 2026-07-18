@@ -1,8 +1,10 @@
 # Changelog
 
-This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and intends to use semantic versioning after the first public release.
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses semantic versioning for source and package releases.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-07-18
 
 ### Added
 
@@ -14,6 +16,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Persistent standalone route profiles and sharded usage ledger.
 - Managed dual-port proxy/Web service lifecycle with structured health, persistent 0600 admin token, restart, and coordinated shutdown.
 - Uninstall guards for active CC-Switch and native CLI takeover state; neither normal uninstall nor purge auto-restores user configuration.
+- Explicit `API_VERSION`, `CAPABILITIES`, package exports, TypeScript declarations, and capability schema.
+- Immutable version+commit+tar-SHA installations, checksum verification, provenance manifests, and transactional upgrade rollback of artifact, data, and service state.
+- `cpr doctor --repair` for a Node/SQLite ABI mismatch in the exact active installation.
+- Cross-platform Node/OS CI plus pack, clean-install, API-contract, provenance, and rollback smoke tests.
 
 ## [0.2.0] - Unreleased
 
@@ -27,3 +33,4 @@ The version exists in `package.json` for development and source installation. It
 - Route helpers for main/sub-agent provider selection.
 
 [Unreleased]: https://github.com/lsjwzh/cli-provider-router/compare/main...HEAD
+[0.3.0]: https://github.com/lsjwzh/cli-provider-router/compare/v0.2.0...v0.3.0

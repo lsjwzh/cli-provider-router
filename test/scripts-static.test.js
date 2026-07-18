@@ -24,7 +24,7 @@ test('installer suite has fixed-version, home, health and takeover guards', () =
   assert.match(installSh, /doctor/);
   assert.match(installSh, /SHA-256/);
   assert.match(installSh, /sqliteRuntimeStatus/);
-  assert.match(installSh, /npm rebuild better-sqlite3/);
+  assert.match(installSh, /npm rebuild --prefix "\$STAGE" better-sqlite3/);
 
   const upgradeSh = fs.readFileSync(path.join(scriptsDir, 'upgrade.sh'), 'utf8');
   assert.match(upgradeSh, /cpr-home\.tar\.gz/);
@@ -48,7 +48,7 @@ test('installer suite has fixed-version, home, health and takeover guards', () =
 
   const installPs1 = fs.readFileSync(path.join(scriptsDir, 'install.ps1'), 'utf8');
   assert.match(installPs1, /sqliteRuntimeStatus/);
-  assert.match(installPs1, /npm rebuild better-sqlite3/);
+  assert.match(installPs1, /npm rebuild --prefix \$Stage better-sqlite3/);
 });
 
 test('source installer dry-run validates without writing installation data', () => {

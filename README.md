@@ -4,7 +4,7 @@ Route Claude Code and Codex to different upstream providers without changing the
 
 [简体中文](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
-> Project status: **early development**. Source installation is supported; npm is not published yet. Provider routing, the dual-port managed service, local Web console, reversible CC-Switch takeover, reversible native CLI configuration takeover, route profiles, and usage ledger are implemented and covered by tests.
+> Project status: **0.3.x source release**. npm is not published yet. Provider routing, the dual-port managed service, local Web console, reversible CC-Switch takeover, reversible native CLI configuration takeover, route profiles, and usage ledger are implemented and covered by tests.
 
 ## Why CPR
 
@@ -68,7 +68,15 @@ $Version = node -p "require('./package.json').version"
 .\scripts\install.ps1 -Source $PWD.Path -Version $Version
 ```
 
-The installer refuses a version that differs from `package.json`, builds a package from the selected checkout, lets npm verify dependency integrity, checks JavaScript syntax, and runs `cpr --version` plus `cpr doctor`. It installs application versions under `CPR_INSTALL_ROOT` and preserves user data in `CPR_HOME`.
+The installer refuses a version that differs from `package.json`, builds a package from the selected checkout, lets npm verify dependency integrity, checks JavaScript syntax, and runs `cpr --version` plus `cpr doctor`. Every application artifact is installed side-by-side under an immutable identity:
+
+```text
+<version>-<source-commit>-<tarball-sha256>
+```
+
+The active `current` pointer changes atomically. Reinstalling the same identity verifies and reuses it; it never overwrites that directory. The installer also keeps the exact `.tgz`, SHA-256 sidecar, and `release-manifest.json` containing the source commit, lock-file hash, Node ABI, platform, and architecture. User data remains outside the artifact in `CPR_HOME`.
+
+For an independently supplied expected checksum, add `--expected-sha256 <64-hex>` (PowerShell: `-ExpectedSha256 <64-hex>`). A mismatch aborts before activation.
 
 Default locations:
 
@@ -99,7 +107,29 @@ $Version = node -p "require('./package.json').version"
 .\scripts\upgrade.ps1 -Source $PWD.Path -Version $Version
 ```
 
-Upgrade creates a timestamped backup under the install root, installs side-by-side, runs health checks, and rolls the active application pointer back if installation fails. It does not delete `CPR_HOME`.
+Upgrade first backs up `CPR_HOME` and records the old artifact and service state. It then installs and checks the candidate without activating it, stops the old service only when it was running, atomically switches the pointer, and restarts the candidate on the same ports. Any install, activation, restart, or health failure restores all three parts together: the old artifact pointer, the exact pre-upgrade `CPR_HOME`, and the previous running/stopped service state. The failed candidate and timestamped backup remain available for diagnosis.
+
+### Repair a Node/SQLite ABI mismatch
+
+`better-sqlite3` is optional, but CC-Switch import/takeover needs a native binding matching the current Node ABI. After changing Node versions, diagnose and repair the exact active installation with:
+
+```bash
+cpr doctor
+cpr doctor --repair
+```
+
+The repair is scoped to the install prefix reported by `doctor`; it never rebuilds MultiCC's dependencies or another CPR artifact.
+
+### Produce and verify a release artifact
+
+Maintainers can create a tarball, checksum, and machine-readable provenance record without publishing:
+
+```bash
+npm run pack:release -- --output ./dist --require-clean
+shasum -a 256 -c ./dist/cli-provider-router-*.tgz.sha256
+```
+
+The provenance JSON binds package semver, public API version, capabilities, commit, lock-file SHA-256, tarball SHA-256, runtime ABI, platform, and architecture. This command does **not** publish to npm.
 
 ### Uninstall
 
@@ -144,6 +174,8 @@ cpr status
 cpr serve --port 4567 --web-port 4568
 
 cpr doctor
+# Rebuild optional SQLite support for this exact installation when requested
+cpr doctor --repair
 ```
 
 ### Directly manage native CLI configuration (CC-Switch not required)
@@ -166,8 +198,12 @@ The Web console provides Dashboard, Providers, a CC-Switch takeover page, a sepa
 
 ## Library API
 
+Version `0.3.0` exposes an explicit CommonJS export map and TypeScript declarations. Hosts should negotiate against `API_VERSION` and `CAPABILITIES` instead of probing private files or assuming package semver equals the library contract version.
+
 ```js
 const cpr = require('cli-provider-router');
+
+console.log(cpr.API_VERSION, cpr.CAPABILITIES);
 
 const store = cpr.createStore({
   dataFile: '/absolute/path/to/providers.json',

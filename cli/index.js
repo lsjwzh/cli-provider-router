@@ -16,7 +16,7 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 const cpr = require('../lib/index');
 const { createCprPaths, ensureCprPaths, DEFAULT_PROXY_PORT } = require('../lib/paths');
@@ -157,6 +157,10 @@ function cmdRm(args) {
   if (!ref) die('usage: cpr rm <name|id> [--app claude|codex]');
   const st = store();
   const { appType, id, summary } = findProvider(st, ref, args.flags.app);
+  const references = routeProfiles().referencesProvider(appType, id);
+  if (references.length) {
+    die(`provider is used by ${references.length} route profile(s): ${references.map(item => item.name || item.id).join(', ')}`);
+  }
   st.deleteProvider(appType, id);
   console.log(C.green('✓ removed ') + C.bold(summary.name) + C.dim(`  (${appType})`));
 }
@@ -198,9 +202,51 @@ function cmdUse(args) {
   child.on('error', (e) => die(`failed to spawn "${cmd}": ${e.message}`));
 }
 
-function cmdDoctor() {
+function currentInstallContext() {
+  const packageRoot = fs.realpathSync(path.resolve(__dirname, '..'));
+  const parent = path.dirname(packageRoot);
+  const prefix = path.basename(parent) === 'node_modules'
+    ? path.dirname(parent)
+    : packageRoot;
+  return {
+    packageRoot,
+    prefix: fs.realpathSync(prefix),
+    sqlitePackage: path.join(prefix, 'node_modules', 'better-sqlite3', 'package.json'),
+  };
+}
+
+function freshSqliteProbe(packageRoot) {
+  const probeFile = path.join(packageRoot, 'lib', 'sqlite-runtime.js');
+  const result = spawnSync(process.execPath, ['-e',
+    'const s=require(process.argv[1]).sqliteRuntimeStatus(); if(!s.available){console.error(s.message);process.exit(1)}',
+    probeFile], { encoding: 'utf8' });
+  return { ok: result.status === 0, stderr: String(result.stderr || '').trim() };
+}
+
+function repairSqliteRuntime(context) {
+  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  if (!onPath(npm)) die('npm was not found on PATH; cannot repair SQLite support');
+  console.log(`  repair prefix:   ${context.prefix}`);
+  if (!fs.existsSync(context.sqlitePackage)) {
+    console.log(C.yellow('  optional dependency is missing; installing from the current artifact lock...'));
+    const install = spawnSync(npm, ['install', '--prefix', context.prefix, '--include=optional', '--no-audit', '--no-fund'], { stdio: 'inherit' });
+    if (install.status !== 0) die(`npm install failed for ${context.prefix}`);
+  }
+  console.log(`  rebuilding:      npm rebuild --prefix ${context.prefix} better-sqlite3`);
+  const rebuild = spawnSync(npm, ['rebuild', '--prefix', context.prefix, 'better-sqlite3'], { stdio: 'inherit' });
+  if (rebuild.status !== 0) die(`better-sqlite3 rebuild failed for ${context.prefix}`);
+  const probe = freshSqliteProbe(context.packageRoot);
+  if (!probe.ok) die(`SQLite is still unavailable after rebuild${probe.stderr ? `: ${probe.stderr}` : ''}`);
+  console.log(C.green('  repair result:   SQLite runtime is available'));
+}
+
+function cmdDoctor(args = { flags: {} }) {
   const st = store();
+  const context = currentInstallContext();
   console.log(C.bold('cli-provider-router doctor\n'));
+  console.log(`  package root:    ${context.packageRoot}`);
+  console.log(`  install prefix:  ${context.prefix}`);
+  console.log(`  runtime:         ${process.version} ABI ${process.versions.modules} ${process.platform}/${process.arch}`);
   // store
   console.log(`  store file:      ${DATA_FILE} ${fs.existsSync(DATA_FILE) ? C.green('(exists)') : C.dim('(will be created)')}`);
   const nClaude = st.listProviders('claude').length;
@@ -211,7 +257,7 @@ function cmdDoctor() {
   console.log(`  cc-switch db:    ${ccDb} ${cpr.ccSwitchAvailable(ccDb) ? C.green('(found)') : C.dim('(not found)')}`);
   const sqlite = cpr.sqliteRuntimeStatus();
   console.log(`  sqlite runtime:  ${sqlite.available ? C.green('(available)') : C.red('(unavailable)')}`);
-  if (!sqlite.available) console.log(`  repair:          ${sqlite.repair}`);
+  if (!sqlite.available) console.log(`  repair:          cpr doctor --repair`);
   // codex homes
   console.log(`  CPR home:        ${PATHS.home}`);
   console.log(`  codex homes:     ${PATHS.codexHomesDir}`);
@@ -219,6 +265,10 @@ function cmdDoctor() {
   for (const bin of ['claude', 'codex']) {
     const found = onPath(bin);
     console.log(`  ${bin} on PATH:   ${found ? C.green(found) : C.red('not found')}`);
+  }
+  if (args.flags && args.flags.repair) {
+    if (sqlite.available) console.log(C.green('  repair result:   no repair needed; SQLite runtime already matches this ABI'));
+    else repairSqliteRuntime(context);
   }
   console.log('');
 }
@@ -475,7 +525,7 @@ ${C.bold('Usage ledger')}
   cpr usage clean [--retain-days 90] [--dry-run]
 
 ${C.bold('Other')}
-  cpr doctor                         environment diagnostics
+  cpr doctor [--repair]              diagnostics; repair SQLite in this exact install
   cpr --version
 
 Store:      ${DATA_FILE}
