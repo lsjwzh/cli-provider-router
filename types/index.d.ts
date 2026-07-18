@@ -12,6 +12,14 @@ export type {
   PreparedSessionRouting,
 } from './host-embedding';
 export { prepareSessionRouting } from './host-embedding';
+export type {
+  FileLockOptions, FileLockHandle, DurableStoreOptions, DurableLoadResult, DurableStore,
+} from './durable-store';
+export {
+  DEFAULT_LOCK_TIMEOUT_MS, DEFAULT_LOCK_STALE_MS, DEFAULT_DURABLE_BACKUPS,
+  CorruptedStateError, RevisionConflictError, LockTimeoutError,
+  acquireFileLock, withFileLock, createDurableStore,
+} from './durable-store';
 
 export type AppType = 'claude' | 'codex';
 export type AgentRole = 'main' | 'sub' | 'aux' | string;
@@ -77,7 +85,7 @@ export interface UsageEvent {
   [key: string]: unknown;
 }
 
-export const API_VERSION: '1.0.0';
+export const API_VERSION: '1.1.0';
 export const CAPABILITIES: Readonly<Record<string, string>>;
 export const APP_TYPES: readonly AppType[];
 export const DEFAULT_PROXY_PORT: number;
@@ -141,6 +149,9 @@ export const codexProviderProxyable: (...args: any[]) => any; export const mater
 export const materializeCodexRoutingHome: (...args: any[]) => any; export const secureDirectory: (...args: any[]) => any;
 export const atomicWriteFile: (...args: any[]) => any; export const readJson: (...args: any[]) => any;
 export const removeFile: (...args: any[]) => any; export const writeJsonAtomic: (...args: any[]) => any;
+export const readJsonStrict: (...args: any[]) => any; export const loadOrRecover: (...args: any[]) => any;
+export const backupFilePath: (file: string, index: number) => string;
+export const rotateJsonBackups: (file: string, keep: number) => void;
 export const normalizeRouteProfile: (...args: any[]) => any; export const isPidRunning: (...args: any[]) => any;
 export const probeHealth: (...args: any[]) => any; export const readPid: (...args: any[]) => any;
 export const createSettingsStore: (...args: any[]) => any; export const createSqliteRuntime: (...args: any[]) => any;

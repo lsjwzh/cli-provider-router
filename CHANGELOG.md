@@ -4,6 +4,29 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+### Added
+
+- Durable config-store layer (`cli-provider-router/durable-store`) shared by the
+  provider, route-profile, and settings stores: schema envelopes with monotonic
+  revisions, rolling on-write backups with transparent recovery
+  (`loadOrRecover`), fail-closed strict reads (`readJsonStrict`,
+  `CorruptedStateError` — only a missing file yields defaults; permission
+  errors, truncation, and malformed JSON raise), optimistic revision CAS
+  (`RevisionConflictError`, HTTP 409 shape), and an owner-stamped cross-process
+  file lock with timeout and stale-lock recovery (`LockTimeoutError`,
+  `acquireFileLock`, `withFileLock`). Legacy bare documents (provider arrays,
+  `{ providers }`/`{ version, profiles }` wrappers, bare settings objects)
+  migrate transparently on the next write. Declared as the
+  `durableConfigStore` capability; JavaScript API version is now `1.1.0`.
+
+### Changed
+
+- Provider, route-profile, and settings CRUD now runs read-modify-write cycles
+  under the cross-process lock, so the Web service and concurrent
+  `cpr add/rm/import` invocations can no longer lose each other's updates.
+  Corrupted store files now fail closed with `CPR_CORRUPTED_STATE` instead of
+  silently resetting to defaults (and then overwriting user data).
+
 ## [0.3.0] - 2026-07-18
 
 ### Added
