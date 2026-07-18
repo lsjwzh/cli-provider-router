@@ -24,6 +24,9 @@
     "./proxy/codex-transform": { "types": "./types/proxy.d.ts", "require": "./lib/proxy/codex-transform.js", "default": "./lib/proxy/codex-transform.js" },
     "./web-api": { "types": "./types/web-api.d.ts", "require": "./lib/web-api.js", "default": "./lib/web-api.js" },
     "./api-metadata": { "types": "./types/api-metadata.d.ts", "require": "./lib/api-metadata.js", "default": "./lib/api-metadata.js" },
+    "./model-policy": { "types": "./types/model-policy.d.ts", "require": "./lib/model-policy.js", "default": "./lib/model-policy.js" },
+    "./http-target": { "types": "./types/http-target.d.ts", "require": "./lib/http-target.js", "default": "./lib/http-target.js" },
+    "./host-embedding": { "types": "./types/host-embedding.d.ts", "require": "./lib/host-embedding.js", "default": "./lib/host-embedding.js" },
     "./schema/capabilities": "./schema/capabilities.schema.json",
     "./package.json": "./package.json"
   },

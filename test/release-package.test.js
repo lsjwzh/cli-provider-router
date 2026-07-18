@@ -68,6 +68,7 @@ test('packed artifact clean-installs and resolves root and documented subpaths',
       'store', 'spawn-env', 'routing', 'paths', 'service', 'usage-ledger',
       'direct-cli-config', 'sqlite-runtime', 'ccswitch', 'proxy/claude',
       'proxy/codex', 'proxy/codex-transform', 'web-api', 'api-metadata',
+      'model-policy', 'http-target', 'host-embedding',
     ]) assert.doesNotThrow(() => requireFromInstall(`cli-provider-router/${subpath}`), subpath);
 
     const cpr = path.join(prefix, 'node_modules', '.bin', process.platform === 'win32' ? 'cpr.cmd' : 'cpr');

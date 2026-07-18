@@ -237,9 +237,30 @@ cpr.mountCodexProxy(app, {
   usageSink: event => recordUsage(event),
 });
 
+// Or prepare one host-owned invocation with a scoped managed credential.
+const prepared = cpr.prepareSessionRouting({
+  cli: 'claude',
+  externalSessionId: 'host-job-42',
+  providerId: provider.id,
+  store,
+  managedCredentialPath: '/absolute/host-owned/managed-routes.json',
+  proxyBaseUrl: 'http://127.0.0.1:9000',
+  usage: event => recordUsage(event),
+});
+cpr.mountClaudeProxy(app, prepared.proxy);
+// Spawn the CLI with prepared.env, then revoke when the host invocation ends.
+prepared.revoke();
+
 // Must be mounted before express.json() so request/response streams stay intact.
 cpr.mountCcSwitchGateway(app, { home: '/absolute/CPR_HOME' });
 ```
+
+Embedding hosts can also use the pure `model-policy` and `http-target`
+subpaths. `resolveHttpTarget()` returns only a provider's real upstream target;
+a host-local proxy address is transient routing input and is never persisted as
+provider configuration. `prepareSessionRouting()` exposes only Claude/Codex
+route materialization and proxy options—it does not mount the Web console,
+CC-Switch takeover, native CLI takeover, or the standalone service.
 
 The standalone service persists normalized usage events and exposes CLI/Web queries. Library hosts can still consume the callback without using CPR's ledger. See [docs/agent-routing.md](docs/agent-routing.md) for route boundaries and current role granularity.
 

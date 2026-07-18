@@ -26,6 +26,8 @@ test('createStore: CRUD round-trip for a claude provider', () => {
   const summary = store.getProviderSummary('claude', created.id);
   assert.equal(summary.name, 'DeepSeek');
   assert.equal(summary.baseUrl, 'https://api.deepseek.com');
+  assert.equal(summary.protocol, 'anthropic');
+  assert.equal(summary.wireApi, 'messages');
   assert.equal(summary.model, 'deepseek-chat');
   assert.ok(summary.hasToken);
   assert.notEqual(summary.tokenMask, 'sk-abcdef123456', 'token is masked');
@@ -87,6 +89,21 @@ test('resolveCodexDirectHttp: chat-only provider resolves a /chat/completions ta
   const d = store.resolveCodexDirectHttp(id);
   assert.equal(d.canDirect, true);
   assert.match(d.url, /\/chat\/completions$/);
+  const summary = store.getProviderSummary('codex', id);
+  assert.equal(summary.protocol, 'openai');
+  assert.equal(summary.wireApi, 'responses');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('ProviderSummary reports the CLI-facing wire API for bridged Codex providers', () => {
+  const { store, dir } = tmpStore();
+  const { id } = store.createProvider({
+    appType: 'codex', name: 'Chat bridge', baseUrl: 'https://api.deepseek.com',
+    authToken: 'sk-chat', model: 'deepseek-chat', useChatResponsesProxy: true,
+  });
+  const summary = store.getProviderSummary('codex', id);
+  assert.equal(summary.protocol, 'openai');
+  assert.equal(summary.wireApi, 'responses');
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

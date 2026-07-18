@@ -13,12 +13,13 @@ test('package, JavaScript API and capability versions are explicit semver contra
   const semver = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
   assert.match(pkg.version, semver);
   assert.match(api.API_VERSION, semver);
+  assert.equal(Number(api.API_VERSION.split('.')[0]), 1, 'embedding API major must remain 1');
   assert.ok(Object.isFrozen(api.CAPABILITIES));
   assert.deepEqual(Object.keys(api.CAPABILITIES).sort(), [
     'agentRouting', 'ccSwitchReadOnlyImport', 'ccSwitchTakeover',
-    'directCliTakeover', 'managedHopCredentials', 'managedService', 'normalizedUsage',
-    'protocolProxy', 'providerStore', 'spawnEnvironment', 'takeoverLifecycle',
-    'webConsole',
+    'directCliTakeover', 'hostEmbedding', 'httpTarget', 'managedHopCredentials',
+    'managedRouteCredential', 'managedService', 'modelPolicy', 'normalizedUsage',
+    'protocolProxy', 'providerStore', 'spawnEnvironment', 'takeoverLifecycle', 'webConsole',
   ]);
   for (const version of Object.values(api.CAPABILITIES)) assert.match(version, /^\d+\.\d+$/);
 });
@@ -28,6 +29,7 @@ test('explicit root facade retains the complete 0.2 compatibility surface', () =
     'constants', 'spawn-env', 'routing', 'paths', 'atomic-json',
     'route-profile-store', 'service', 'usage-ledger', 'settings-store',
     'direct-cli-config', 'sqlite-runtime', 'proxy/codex-transform', 'web-api',
+    'model-policy', 'http-target', 'host-embedding',
   ];
   const expected = new Set([
     'createStore', 'createClaudeHandler', 'parseClaudeProxyUrl',
