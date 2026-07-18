@@ -18,6 +18,7 @@ const {
   materializeCodexAuth,
   materializeCodexRoutingHome,
 } = require('../lib/routing');
+const { createHopCredentialStore } = require('../lib/proxy/hop-credentials');
 
 function listen(handler) {
   return new Promise((resolve, reject) => {
@@ -35,7 +36,7 @@ function close(server) {
   return new Promise(resolve => server.close(resolve));
 }
 
-function request({ port, path: pathname, body }) {
+function request({ port, path: pathname, body, authorization = 'Bearer multicc-local' }) {
   return new Promise((resolve, reject) => {
     const payload = Buffer.from(JSON.stringify(body || {}));
     const req = http.request({
@@ -43,7 +44,7 @@ function request({ port, path: pathname, body }) {
       headers: {
         'content-type': 'application/json',
         'content-length': String(payload.length),
-        authorization: 'Bearer multicc-local',
+        ...(authorization == null ? {} : { authorization }),
       },
     }, res => {
       const chunks = [];
@@ -315,12 +316,21 @@ async function main() {
     }),
   };
   const usageEvents = [];
+  const detailedUsageEvents = [];
+  const hopHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-hop-routing-'));
+  const hopCredentials = createHopCredentialStore({ cprHome: hopHome });
+  const workerCredential = hopCredentials.issue({
+    cli: 'codex', providerId: 'sub', sessionId: 'direct-codex-profile',
+    roleKind: 'sub', agentRole: 'worker', routeName: 'worker',
+  });
   const app = express();
   app.use(express.json());
   mountCodexProxy(app, {
     getProvider: (_appType, id) => providers[id] || null,
     getPort: () => 0,
     onUsage: info => usageEvents.push(info),
+    onUsageEvent: info => detailedUsageEvents.push(info),
+    hopCredentials,
   });
   const proxy = await listen(app);
 
@@ -366,6 +376,36 @@ async function main() {
       });
     });
 
+    await test('named worker route requires its hop credential and records agentRole', async () => {
+      const missing = await request({
+        port: proxy.port,
+        path: '/codex-proxy/sub/direct-codex-profile/worker/responses',
+        authorization: null,
+        body: { model: 'sub-model', input: [], stream: true },
+      });
+      assert.strictEqual(missing.status, 401);
+      const wrong = await request({
+        port: proxy.port,
+        path: '/codex-proxy/sub/direct-codex-profile/worker/responses',
+        authorization: 'Bearer wrong-route-token',
+        body: { model: 'sub-model', input: [], stream: true },
+      });
+      assert.strictEqual(wrong.status, 401);
+      const response = await request({
+        port: proxy.port,
+        path: '/codex-proxy/sub/direct-codex-profile/worker/responses',
+        authorization: `Bearer ${workerCredential.token}`,
+        body: { model: 'sub-model', input: [], stream: true },
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(response.status, 200);
+      const event = detailedUsageEvents.find(item => item.sessionId === 'direct-codex-profile');
+      assert.equal(event.roleKind, 'sub');
+      assert.equal(event.agentRole, 'worker');
+      assert.equal(event.routeName, 'worker');
+      assert.equal(event.providerId, 'sub');
+    });
+
     await test('invalid role and unknown provider fail before upstream routing', async () => {
       const badRole = await request({
         port: proxy.port,
@@ -380,12 +420,13 @@ async function main() {
       });
       assert.strictEqual(missing.status, 404);
       assert.strictEqual(mainRequests.length, 1);
-      assert.strictEqual(subRequests.length, 1);
+      assert.strictEqual(subRequests.length, 2);
     });
   } finally {
     await close(proxy.server);
     await close(mainUpstream.server);
     await close(subUpstream.server);
+    fs.rmSync(hopHome, { recursive: true, force: true });
   }
 
 }

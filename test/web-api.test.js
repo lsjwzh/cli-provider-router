@@ -23,9 +23,25 @@ function request(port, requestPath, options = {}) {
 }
 
 function dependencies() {
-  const providers = [{ id: 'p1', appType: 'claude', name: 'Safe', baseUrl: 'https://safe.example', tokenMask: 'abc…xyz' }];
+  const providers = [{
+    id: 'p1', appType: 'claude', name: 'Safe', baseUrl: 'https://safe.example', tokenMask: 'abc…xyz',
+    settingsConfig: JSON.stringify({ env: { ANTHROPIC_BASE_URL: 'https://safe.example', ANTHROPIC_AUTH_TOKEN: 'secret' } }),
+  }];
+  const routeProviderFixtures = {
+    claude: {
+      p1: providers[0],
+      p2: { id: 'p2', appType: 'claude', settingsConfig: JSON.stringify({ env: { ANTHROPIC_BASE_URL: 'https://sub.example', ANTHROPIC_AUTH_TOKEN: 'secret' } }) },
+    },
+    codex: Object.fromEntries(['p1', 'p2', 'p3', 'p4'].map(id => [id, {
+      id, appType: 'codex', settingsConfig: JSON.stringify({
+        auth: { OPENAI_API_KEY: `${id}-secret` },
+        config: `model_provider = "upstream"\nmodel = "gpt-${id}"\n[model_providers.upstream]\nbase_url = "https://${id}.example/v1"\n`,
+      }),
+    }])),
+  };
   const store = {
     listProviders: appType => providers.filter(provider => !appType || provider.appType === appType),
+    getProvider: (appType, id) => routeProviderFixtures[appType] && routeProviderFixtures[appType][id] || null,
     createProvider: input => { const provider = { id: `p${providers.length + 1}`, ...input, settingsConfig: { env: { ANTHROPIC_AUTH_TOKEN: input.authToken } } }; providers.push(provider); return provider; },
     getProviderSummary: (appType, id) => { const p = providers.find(item => item.appType === appType && item.id === id); return p && { id: p.id, appType: p.appType, name: p.name, baseUrl: p.baseUrl, tokenMask: p.authToken ? '***' : p.tokenMask }; },
     deleteProvider: (appType, id) => { const index = providers.findIndex(item => item.appType === appType && item.id === id); if (index < 0) return false; providers.splice(index, 1); return true; },
