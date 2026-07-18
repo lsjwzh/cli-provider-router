@@ -2,6 +2,17 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
+export type { ModelPolicyProvider, ResolveWireModelOptions } from './model-policy';
+export { stripModelSuffix, modelValidForProvider, validateModel, resolveWireModel } from './model-policy';
+export type { HttpProtocol, HttpWireApi, HttpTargetOptions, HttpTargetResolution } from './http-target';
+export { DEFAULT_LOCAL_PROXY_PATHS, isLocalProxyUrl, resolveHttpTarget } from './http-target';
+export type {
+  HostProviderStore, SessionRouteInput, PreparedSessionRoute, ManagedRouteCredential,
+  ManagedCredentialStore, HostUsageTarget, PrepareSessionRoutingOptions,
+  PreparedSessionRouting,
+} from './host-embedding';
+export { prepareSessionRouting } from './host-embedding';
+
 export type AppType = 'claude' | 'codex';
 export type AgentRole = 'main' | 'sub' | 'aux' | string;
 
@@ -19,7 +30,9 @@ export interface ProviderInput {
 export interface Provider extends ProviderInput { id: string; }
 export interface ProviderSummary {
   id: string; appType: AppType; name: string; source?: string;
-  baseUrl?: string; model?: string; modelOptions?: string[];
+  baseUrl?: string; protocol: 'anthropic' | 'openai';
+  wireApi: 'messages' | 'responses' | 'chat' | 'chat_completions';
+  model?: string; modelOptions?: string[];
   aliasOnly?: boolean; tokenMask?: string; hasToken?: boolean;
   useChatResponsesProxy?: boolean; isOfficial?: boolean;
   [key: string]: unknown;
@@ -81,8 +94,8 @@ export const CPR_MODEL_PREFIX: string;
 export const LEGACY_MODEL_PREFIXES: readonly string[];
 
 export function createStore(options?: { dataFile?: string; ccSwitchDb?: string; paths?: CprPaths }): ProviderStore;
-export function resolveSpawnEnv(options: { cli: string; providerId?: string; store: ProviderStore; paths?: CprPaths; cprHome?: string }): SpawnResolution;
-export function buildChildEnv(base: NodeJS.ProcessEnv, options: { cli: string; providerId?: string; store: ProviderStore; [key: string]: unknown }, extra?: NodeJS.ProcessEnv): SpawnResolution;
+export function resolveSpawnEnv(options: { cli: string; providerId?: string; store: ProviderStore; paths?: CprPaths; cprHome?: string; codexHomesDir?: string }): SpawnResolution;
+export function buildChildEnv(base: NodeJS.ProcessEnv, options: { cli: string; providerId?: string; store: ProviderStore; paths?: CprPaths; cprHome?: string; codexHomesDir?: string; [key: string]: unknown }, extra?: NodeJS.ProcessEnv): SpawnResolution;
 export function resolveSessionWireModel(sessionModel: string | null, options?: Record<string, unknown>): string | null;
 export function createCprPaths(options?: { home?: string; env?: NodeJS.ProcessEnv }): CprPaths;
 export function ensureCprPaths(options?: CprPaths | { home?: string }): CprPaths;

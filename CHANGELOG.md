@@ -4,6 +4,14 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+### Added
+
+- Stable host-embedding contracts for pure model policy and upstream HTTP
+  target resolution, provider protocol/wire summaries, scoped managed route
+  credentials, and one-call Claude/Codex session route preparation.
+- Explicit host storage injection for provider data, Codex homes, usage, and
+  managed credentials without initializing the default CPR home.
+
 ## [0.3.0] - 2026-07-18
 
 ### Added
