@@ -7,7 +7,7 @@ const path = require('path');
 const test = require('node:test');
 const TOML = require('@iarna/toml');
 const { createCprPaths } = require('../lib/paths');
-const { createDirectCliConfigManager, LOCAL_BEARER_TOKEN } = require('../lib/direct-cli-config');
+const { createDirectCliConfigManager } = require('../lib/direct-cli-config');
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-direct-config-'));
@@ -25,11 +25,11 @@ function fixture() {
     },
     'codex:codex-main': {
       id: 'codex-main',
-      settingsConfig: JSON.stringify({ config: 'model_provider = "upstream"\nmodel = "gpt-main"\n[model_providers.upstream]\nbase_url = "https://main.invalid/v1"\n' }),
+      settingsConfig: JSON.stringify({ auth: { OPENAI_API_KEY: 'main-secret' }, config: 'model_provider = "upstream"\nmodel = "gpt-main"\n[model_providers.upstream]\nbase_url = "https://main.invalid/v1"\n' }),
     },
     'codex:codex-sub': {
       id: 'codex-sub',
-      settingsConfig: JSON.stringify({ config: 'model_provider = "upstream"\nmodel = "gpt-sub"\n[model_providers.upstream]\nbase_url = "https://sub.invalid/v1"\n' }),
+      settingsConfig: JSON.stringify({ auth: { OPENAI_API_KEY: 'sub-secret' }, config: 'model_provider = "upstream"\nmodel = "gpt-sub"\n[model_providers.upstream]\nbase_url = "https://sub.invalid/v1"\n' }),
     },
   };
   const profiles = {
@@ -83,9 +83,11 @@ test('Claude takeover preserves unrelated settings and restores an existing file
     assert.equal(settings.env.KEEP_ME, 'yes');
     assert.equal(settings.env.ANTHROPIC_API_KEY, undefined);
     assert.equal(settings.env.ANTHROPIC_BASE_URL, 'http://127.0.0.1:9876/claude-proxy/claude-main/direct-claude-profile');
-    assert.equal(settings.env.ANTHROPIC_AUTH_TOKEN, 'cpr-direct-claude-profile');
+    assert.match(settings.env.ANTHROPIC_AUTH_TOKEN, /^[A-Za-z0-9_-]{32,}$/);
+    assert.notEqual(settings.env.ANTHROPIC_AUTH_TOKEN, 'cpr-direct-claude-profile');
     assert.equal(settings.env.ANTHROPIC_MODEL, 'claude-main-model');
     assert.equal(settings.env.CLAUDE_CODE_SUBAGENT_MODEL, 'cpr:claude-sub:claude-sub-custom');
+    assert.equal(f.manager.status({ cli: 'claude' }).phase, 'active');
     assert.equal(f.manager.status({ cli: 'claude' }).drifted, false);
     assert.equal(f.manager.apply({ cli: 'claude', profileId: f.profiles.claude.id }).idempotent, true);
     f.manager.restore({ cli: 'claude' });
@@ -128,7 +130,8 @@ test('Codex takeover preserves unrelated TOML, creates routed roles, never touch
     assert.equal(config.model, 'gpt-main');
     assert.equal(config.features.multi_agent, true);
     assert.equal(config.model_providers.old.base_url, 'https://old.invalid/v1');
-    assert.equal(config.model_providers.cpr_direct_main.experimental_bearer_token, LOCAL_BEARER_TOKEN);
+    assert.match(config.model_providers.cpr_direct_main.experimental_bearer_token, /^[A-Za-z0-9_-]{32,}$/);
+    assert.notEqual(config.model_providers.cpr_direct_main.experimental_bearer_token, 'cpr-local');
     assert.equal(config.model_providers.cpr_direct_main.env_key, undefined);
     assert.equal(config.model_providers.cpr_direct_main.base_url, 'http://127.0.0.1:9876/codex-proxy/codex-main/direct-codex-profile/main');
     assert.equal(config.model_providers.cpr_direct_role_explorer.base_url, 'http://127.0.0.1:9876/codex-proxy/codex-main/direct-codex-profile/explorer');
