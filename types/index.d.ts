@@ -65,6 +65,50 @@ export interface SpawnResolution {
   providerModel: string | null;
   providerModels: string[];
   providerName?: string | null;
+  codexHome?: string;
+  tools?: unknown;
+  routingStatus: 'default' | 'routed' | 'default-fallback';
+  fallback: RoutingFallbackState | null;
+}
+
+export interface RoutingFailureDetails {
+  cli: string;
+  providerId: string;
+  stage: string;
+}
+
+export interface RoutingFallbackState {
+  readonly type: 'provider-routing-fallback';
+  readonly status: 'default-fallback';
+  readonly reason: 'provider-not-found' | 'materialization-failed' | string;
+  readonly credentialFree: true;
+  readonly cli: string;
+  readonly providerId: string;
+  readonly error: Readonly<{ name: string; code: string; message: string; stage: string }>;
+}
+
+export class ProviderRoutingError extends Error {
+  constructor(options: {
+    code: string; message: string; cli: string; providerId: string;
+    stage: string; cause?: unknown;
+  });
+  readonly code: string;
+  readonly cli: string;
+  readonly providerId: string;
+  readonly stage: string;
+  readonly details: Readonly<RoutingFailureDetails>;
+  readonly cause?: unknown;
+}
+
+export interface SpawnEnvironmentOptions {
+  cli: string;
+  providerId?: string;
+  store: ProviderStore;
+  paths?: CprPaths;
+  cprHome?: string;
+  codexHomesDir?: string;
+  allowDefaultFallback?: boolean;
+  onRoutingEvent?: (event: RoutingFallbackState) => void;
 }
 
 export interface UsageEvent {
@@ -94,8 +138,8 @@ export const CPR_MODEL_PREFIX: string;
 export const LEGACY_MODEL_PREFIXES: readonly string[];
 
 export function createStore(options?: { dataFile?: string; ccSwitchDb?: string; paths?: CprPaths }): ProviderStore;
-export function resolveSpawnEnv(options: { cli: string; providerId?: string; store: ProviderStore; paths?: CprPaths; cprHome?: string; codexHomesDir?: string }): SpawnResolution;
-export function buildChildEnv(base: NodeJS.ProcessEnv, options: { cli: string; providerId?: string; store: ProviderStore; paths?: CprPaths; cprHome?: string; codexHomesDir?: string; [key: string]: unknown }, extra?: NodeJS.ProcessEnv): SpawnResolution;
+export function resolveSpawnEnv(options: SpawnEnvironmentOptions): SpawnResolution;
+export function buildChildEnv(base: NodeJS.ProcessEnv, options: SpawnEnvironmentOptions & { [key: string]: unknown }, extra?: NodeJS.ProcessEnv): SpawnResolution;
 export function resolveSessionWireModel(sessionModel: string | null, options?: Record<string, unknown>): string | null;
 export function createCprPaths(options?: { home?: string; env?: NodeJS.ProcessEnv }): CprPaths;
 export function ensureCprPaths(options?: CprPaths | { home?: string }): CprPaths;
@@ -127,10 +171,13 @@ export const ccSwitchTakeover: Readonly<Record<string, (...args: any[]) => any>>
 // Compatibility surface retained from 0.2.x. Precise domain types will grow
 // additively; these declarations intentionally avoid inventing unstable DTOs.
 export const ALIAS_TIER_KEYS: any; export const ALIAS_TIER_REGEX: RegExp;
-export const ANTHROPIC_ROUTING_KEYS: any; export const CC_DB_DEFAULT: string;
-export const CLAUDE_ROUTING_KEYS: any; export const CODEX_HOMES_DIR: string;
+export const ANTHROPIC_ALIAS_MODEL_KEYS: readonly string[];
+export const ANTHROPIC_ALIAS_MODEL_PRIORITY: readonly string[];
+export const ANTHROPIC_ROUTING_KEYS: readonly string[]; export const CC_DB_DEFAULT: string;
+export const CLAUDE_ROUTING_KEYS: readonly string[]; export const CODEX_HOMES_DIR: string;
+export const CODEX_ROUTING_KEYS: readonly string[];
 export const DOMESTIC_PROXY_MAP: any; export const RESPONSES_COMPAT_PROXY_MAP: any;
-export const WIRE_DEFAULT_MODEL: string; export const CLAUDE_MANAGED_ENV_KEYS: any;
+export const WIRE_DEFAULT_MODEL: string; export const CLAUDE_MANAGED_ENV_KEYS: readonly string[];
 export const DIRECT_PROVIDER_PREFIX: string; export const LOCAL_BEARER_TOKEN: string;
 export const DEFAULT_CODEX_AGENT_ROLES: any; export const DEFAULT_CODEX_SUBAGENT_PROVIDER: string;
 export const LEGACY_CODEX_SUBAGENT_PROVIDER: string;
