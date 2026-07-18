@@ -56,6 +56,8 @@ export interface SpawnResolution {
 
 export interface UsageEvent {
   eventId?: string; timestamp?: string | number; role?: AgentRole;
+  roleKind?: 'main' | 'sub' | 'aux'; agentRole?: string | null;
+  routeName?: string; coverage?: 'observed' | 'unobservable';
   providerId?: string; model?: string; protocol?: string; source?: string;
   inputTokens?: number; outputTokens?: number; cacheRead?: number;
   cacheWrite?: number; status?: string; latencyMs?: number;
@@ -70,6 +72,7 @@ export const DIRECTORY_MODE: number;
 export const FILE_MODE: number;
 export const ROUTE_PROFILE_SCHEMA_VERSION: number;
 export const USAGE_SCHEMA_VERSION: number;
+export const USAGE_STORAGE_CONTRACT_VERSION: number;
 export const SNAPSHOT_VERSION: number;
 export const DEFAULT_RETENTION_DAYS: number;
 export const REPAIR_COMMAND: string;
@@ -89,6 +92,14 @@ export function normalizeUsageEvent(event: UsageEvent): UsageEvent;
 export function createRouteProfileStore(options?: Record<string, unknown>): Record<string, (...args: any[]) => any>;
 export function createServiceController(options?: Record<string, unknown>): Record<string, (...args: any[]) => Promise<any>>;
 export function createDirectCliConfigManager(options?: Record<string, unknown>): Record<string, (...args: any[]) => any>;
+export function createHopCredentialStore(options?: Record<string, unknown>): Record<string, (...args: any[]) => any>;
+export function createTakeoverStateStore(options?: CprPaths | { home?: string } | string): Record<string, (...args: any[]) => any>;
+export const HOP_CREDENTIAL_SCHEMA_VERSION: number;
+export const DEFAULT_HOP_TTL_MS: number;
+export const authorizeManagedRequest: (...args: any[]) => any;
+export const normalizeHopRole: (...args: any[]) => any;
+export const isActiveTakeoverState: (...args: any[]) => boolean;
+export const takeoverStatePhase: (...args: any[]) => string;
 export function sqliteRuntimeStatus(): { available: boolean; code: string | null; reason: string | null; message: string | null; repair: string | null };
 export function mountClaudeProxy(app: any, options?: Record<string, unknown>): any;
 export function mountCodexProxy(app: any, options?: Record<string, unknown>): any;
@@ -126,4 +137,6 @@ export const responsesToChat: (...args: any[]) => any; export const parseClaudeP
 export const decodeClaudeRoutedModel: (...args: any[]) => any; export const readOfficialOAuthToken: (...args: any[]) => any;
 export const normalizeResponsesUsage: (...args: any[]) => any; export const resolveCodexProviderTarget: (...args: any[]) => any;
 export const createCcSwitchGatewayHandler: (...args: any[]) => any; export const profileToView: (...args: any[]) => any;
-export const redact: (...args: any[]) => any; export const viewToProfile: (...args: any[]) => any;
+export const profileHash: (...args: any[]) => string; export const providerReferences: (...args: any[]) => any;
+export const redact: (...args: any[]) => any; export const validateProviderInput: (...args: any[]) => any;
+export const validateRouteProfile: (...args: any[]) => any; export const viewToProfile: (...args: any[]) => any;

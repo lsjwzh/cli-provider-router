@@ -16,8 +16,9 @@ test('package, JavaScript API and capability versions are explicit semver contra
   assert.ok(Object.isFrozen(api.CAPABILITIES));
   assert.deepEqual(Object.keys(api.CAPABILITIES).sort(), [
     'agentRouting', 'ccSwitchReadOnlyImport', 'ccSwitchTakeover',
-    'directCliTakeover', 'managedService', 'normalizedUsage',
-    'protocolProxy', 'providerStore', 'spawnEnvironment', 'webConsole',
+    'directCliTakeover', 'managedHopCredentials', 'managedService', 'normalizedUsage',
+    'protocolProxy', 'providerStore', 'spawnEnvironment', 'takeoverLifecycle',
+    'webConsole',
   ]);
   for (const version of Object.values(api.CAPABILITIES)) assert.match(version, /^\d+\.\d+$/);
 });

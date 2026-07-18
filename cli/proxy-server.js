@@ -7,7 +7,6 @@ const express = require('express');
 const cpr = require('../lib/index');
 const { createCprPaths, ensureCprPaths, DEFAULT_PROXY_PORT } = require('../lib/paths');
 const { atomicWriteFile, writeJsonAtomic, removeFile } = require('../lib/atomic-json');
-const { createTakeoverStateStore } = require('../lib/takeover-state');
 
 function argOf(name, def) {
   const i = process.argv.indexOf(`--${name}`);
@@ -54,11 +53,15 @@ async function startServer(options = {}) {
   const routeProfiles = options.routeProfiles || cpr.createRouteProfileStore({ paths });
   const usageLedger = options.usageLedger || cpr.createUsageLedger({ paths });
   const settings = options.settings || cpr.createSettingsStore({ paths, defaults: { proxyPort: port, webPort } });
+  const hopCredentials = options.hopCredentials || cpr.createHopCredentialStore({ paths });
+  const takeoverState = options.takeoverState || cpr.createTakeoverStateStore(paths);
   const directCliConfig = options.directCliConfig || cpr.createDirectCliConfigManager({
     paths,
     store,
     profiles: routeProfiles,
     proxyBaseUrl: `http://127.0.0.1:${port}`,
+    hopCredentials,
+    takeoverState,
   });
   const adminToken = options.adminToken || readOrCreateAdminToken(paths.adminTokenFile);
   const takeoverNonce = options.takeoverNonce || crypto.randomBytes(24).toString('base64url');
@@ -83,8 +86,9 @@ async function startServer(options = {}) {
     webUrl: `http://127.0.0.1:${webPort}`, adminTokenFile: paths.adminTokenFile,
     home: paths.home, startedAt,
   }));
-  cpr.mountCodexProxy(proxyApp, { getProvider, getPort: () => port, onUsage: options.onUsage, onUsageEvent });
-  cpr.mountClaudeProxy(proxyApp, { getProvider, onUsage: options.onUsage, onUsageEvent });
+  const requireHopCredential = options.requireHopCredential !== false;
+  cpr.mountCodexProxy(proxyApp, { getProvider, getPort: () => port, onUsage: options.onUsage, onUsageEvent, hopCredentials, requireHopCredential });
+  cpr.mountClaudeProxy(proxyApp, { getProvider, onUsage: options.onUsage, onUsageEvent, hopCredentials, requireHopCredential });
 
   let proxyServer;
   let web;
@@ -135,7 +139,7 @@ async function startServer(options = {}) {
   let closingPromise = null;
   function close(signal = 'programmatic') {
     if (closingPromise) return closingPromise;
-    try { createTakeoverStateStore(paths).assertCanStop('stop CPR service'); }
+    try { takeoverState.assertCanStop('stop CPR service'); }
     catch (error) { return Promise.reject(error); }
     closingPromise = (async () => {
       clearInterval(heartbeat);
@@ -160,7 +164,7 @@ async function startServer(options = {}) {
     });
   }
 
-  return { proxyApp, proxyServer, web, paths, port, webPort, adminToken, takeoverNonce, state, close, store, routeProfiles, usageLedger, settings, directCliConfig };
+  return { proxyApp, proxyServer, web, paths, port, webPort, adminToken, takeoverNonce, state, close, store, routeProfiles, usageLedger, settings, directCliConfig, hopCredentials, takeoverState };
 }
 
 if (require.main === module) {

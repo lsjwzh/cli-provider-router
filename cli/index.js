@@ -157,6 +157,10 @@ function cmdRm(args) {
   if (!ref) die('usage: cpr rm <name|id> [--app claude|codex]');
   const st = store();
   const { appType, id, summary } = findProvider(st, ref, args.flags.app);
+  const references = routeProfiles().referencesProvider(appType, id);
+  if (references.length) {
+    die(`provider is used by ${references.length} route profile(s): ${references.map(item => item.name || item.id).join(', ')}`);
+  }
   st.deleteProvider(appType, id);
   console.log(C.green('✓ removed ') + C.bold(summary.name) + C.dim(`  (${appType})`));
 }
