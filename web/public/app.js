@@ -2,6 +2,7 @@
 
 let adminToken = '';
 let routeProfileRows = [];
+let ccProviderRows = [];
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -81,11 +82,33 @@ async function loadProviders() {
 
 async function loadCc() {
   const [detect, status] = await Promise.all([api('/ccswitch/detect'), api('/ccswitch/status')]);
+  ccProviderRows = detect.providers || [];
+  const selected = new Set($$('#cc-provider-list input:checked')
+    .map(input => JSON.stringify([input.dataset.appType, input.dataset.providerId])));
+  const list = $('#cc-provider-list'); list.innerHTML = '';
+  for (const provider of ccProviderRows) {
+    const label = document.createElement('label'); label.className = 'provider-choice';
+    const input = document.createElement('input'); input.type = 'checkbox';
+    input.dataset.appType = provider.appType;
+    input.dataset.providerId = provider.providerId;
+    input.checked = selected.has(JSON.stringify([provider.appType, provider.providerId]));
+    const text = document.createElement('span'); text.textContent = `${provider.name} · ${provider.appType} (${provider.providerId})`;
+    label.append(input, text); list.append(label);
+  }
   showJson('#cc-status', { detect, status });
 }
 
+function ccSelectionBody() {
+  const selectedProviders = $$('#cc-provider-list input:checked').map(input => {
+    return { appType: input.dataset.appType, providerId: input.dataset.providerId };
+  });
+  if (!selectedProviders.length) throw new Error('Select at least one CC-Switch provider');
+  const allProviders = selectedProviders.length === ccProviderRows.length && ccProviderRows.length > 0;
+  return allProviders ? { allProviders: true } : { selectedProviders };
+}
+
 async function previewCc() {
-  const data = await api('/ccswitch/preview', { method: 'POST', body: {} });
+  const data = await api('/ccswitch/preview', { method: 'POST', body: ccSelectionBody() });
   const list = $('#cc-preview-list'); list.innerHTML = '';
   for (const change of data.changes || []) {
     const state = document.createElement('span'); state.className = `condition-${change.condition}`; state.textContent = change.condition;
@@ -195,9 +218,23 @@ function bind() {
     catch (error) { notify(error.message, true); }
   });
   $('#cc-refresh').addEventListener('click', () => loadCc().catch(error => notify(error.message, true)));
+  $('#cc-select-all').addEventListener('click', () => $$('#cc-provider-list input').forEach(input => { input.checked = true; }));
+  $('#cc-clear-selection').addEventListener('click', () => $$('#cc-provider-list input').forEach(input => { input.checked = false; }));
   $('#cc-preview').addEventListener('click', () => previewCc().catch(error => notify(error.message, true)));
   $('#cc-snapshot').addEventListener('click', () => confirmedCc('/ccswitch/snapshot', 'CREATE SNAPSHOT').catch(error => notify(error.message, true)));
-  $('#cc-apply').addEventListener('click', async () => { try { const p = await previewCc(); if (p.canApply) await confirmedCc('/ccswitch/apply', 'APPLY TAKEOVER'); } catch (error) { notify(error.message, true); } });
+  $('#cc-apply').addEventListener('click', async () => {
+    try {
+      const selection = ccSelectionBody();
+      const p = await previewCc();
+      if (!p.canApply) return;
+      if (selection.allProviders) {
+        const phrase = 'TAKE OVER ALL PROVIDERS';
+        if (window.prompt(`This selects every provider. Type ${phrase} to continue`) !== phrase) return;
+        selection.allProvidersConfirmation = phrase;
+      }
+      await confirmedCc('/ccswitch/apply', 'APPLY TAKEOVER', selection);
+    } catch (error) { notify(error.message, true); }
+  });
   $('#cc-restore').addEventListener('click', () => confirmedCc('/ccswitch/restore', 'RESTORE').catch(error => notify(error.message, true)));
   $('#cc-force').addEventListener('click', () => confirmedCc('/ccswitch/restore', 'FORCE RESTORE', { force: true }).catch(error => notify(error.message, true)));
   $('#cli-config-cli').addEventListener('change', () => { renderCliConfigProfiles(); loadCliConfig().catch(error => notify(error.message, true)); });

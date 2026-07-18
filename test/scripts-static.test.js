@@ -32,7 +32,8 @@ test('installer suite has fixed-version, home, health and takeover guards', () =
   assert.match(upgradeSh, /doctor/);
 
   const uninstallSh = fs.readFileSync(path.join(scriptsDir, 'uninstall.sh'), 'utf8');
-  assert.match(uninstallSh, /integration-state\.json/);
+  assert.match(uninstallSh, /ccswitch\/state\.json/);
+  assert.doesNotMatch(uninstallSh, /integration-state\.json/);
   assert.match(uninstallSh, /takeover is active/);
   assert.match(uninstallSh, /direct-cli-config\/state/);
   assert.match(uninstallSh, /cli-config restore/);
@@ -40,6 +41,7 @@ test('installer suite has fixed-version, home, health and takeover guards', () =
   assert.match(uninstallSh, /--purge/);
 
   const uninstallPs1 = fs.readFileSync(path.join(scriptsDir, 'uninstall.ps1'), 'utf8');
+  assert.match(uninstallPs1, /ccswitch\\state\.json/);
   assert.match(uninstallPs1, /direct-cli-config\\state/);
   assert.match(uninstallPs1, /cli-config restore/);
   assert.match(uninstallPs1, /will not restore or delete native CLI configuration automatically/i);
@@ -68,17 +70,38 @@ test('uninstall refuses active CC-Switch takeover and preserves installation', (
   const installRoot = path.join(temp, 'install');
   const binDir = path.join(temp, 'bin');
   const cprHome = path.join(temp, 'home');
-  fs.mkdirSync(path.join(cprHome, 'data'), { recursive: true });
+  fs.mkdirSync(path.join(cprHome, 'ccswitch'), { recursive: true });
   fs.mkdirSync(installRoot, { recursive: true });
   fs.mkdirSync(binDir, { recursive: true });
   fs.writeFileSync(path.join(installRoot, 'sentinel'), 'keep');
-  fs.writeFileSync(path.join(cprHome, 'data', 'integration-state.json'), JSON.stringify({ ccSwitch: { status: 'active' } }));
+  const stateFile = path.join(cprHome, 'ccswitch', 'state.json');
+  fs.writeFileSync(stateFile, JSON.stringify({ version: 2, status: 'active', snapshotId: 'snapshot-1', changes: [] }));
 
   const result = spawnSync('bash', [path.join(scriptsDir, 'uninstall.sh'),
     '--install-root', installRoot, '--bin-dir', binDir, '--cpr-home', cprHome], { encoding: 'utf8' });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /takeover is active/);
   assert.ok(fs.existsSync(path.join(installRoot, 'sentinel')));
+  assert.ok(fs.existsSync(stateFile));
+  fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test('uninstall fails closed when authoritative takeover state is unreadable', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-script-invalid-state-'));
+  const installRoot = path.join(temp, 'install');
+  const binDir = path.join(temp, 'bin');
+  const cprHome = path.join(temp, 'home');
+  fs.mkdirSync(path.join(cprHome, 'ccswitch'), { recursive: true });
+  fs.mkdirSync(installRoot, { recursive: true });
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(path.join(installRoot, 'sentinel'), 'keep');
+  fs.writeFileSync(path.join(cprHome, 'ccswitch', 'state.json'), '{broken');
+  const result = spawnSync('bash', [path.join(scriptsDir, 'uninstall.sh'),
+    '--install-root', installRoot, '--bin-dir', binDir, '--cpr-home', cprHome, '--purge'], { encoding: 'utf8' });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /cannot validate integration state/);
+  assert.ok(fs.existsSync(path.join(installRoot, 'sentinel')));
+  assert.ok(fs.existsSync(path.join(cprHome, 'ccswitch', 'state.json')));
   fs.rmSync(temp, { recursive: true, force: true });
 });
 
