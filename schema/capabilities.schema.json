@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lsjwzh/cli-provider-router/schema/capabilities.schema.json",
+  "title": "cli-provider-router public capability descriptor",
+  "type": "object",
+  "required": ["apiVersion", "capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" }
+    }
+  }
+}

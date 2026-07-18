@@ -1,15 +1,42 @@
 {
   "name": "cli-provider-router",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Route any AI CLI (claude/codex/opencode) to a different upstream provider per invocation — by injecting spawn env. Includes Responses↔Chat protocol proxy for codex→chat-only providers. Library + CLI.",
   "main": "lib/index.js",
+  "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "require": "./lib/index.js",
+      "default": "./lib/index.js"
+    },
+    "./store": { "types": "./types/store.d.ts", "require": "./lib/store.js", "default": "./lib/store.js" },
+    "./spawn-env": { "types": "./types/spawn-env.d.ts", "require": "./lib/spawn-env.js", "default": "./lib/spawn-env.js" },
+    "./routing": { "types": "./types/routing.d.ts", "require": "./lib/routing.js", "default": "./lib/routing.js" },
+    "./paths": { "types": "./types/paths.d.ts", "require": "./lib/paths.js", "default": "./lib/paths.js" },
+    "./service": { "types": "./types/service.d.ts", "require": "./lib/service.js", "default": "./lib/service.js" },
+    "./usage-ledger": { "types": "./types/usage-ledger.d.ts", "require": "./lib/usage-ledger.js", "default": "./lib/usage-ledger.js" },
+    "./direct-cli-config": { "types": "./types/direct-cli-config.d.ts", "require": "./lib/direct-cli-config/index.js", "default": "./lib/direct-cli-config/index.js" },
+    "./sqlite-runtime": { "types": "./types/sqlite-runtime.d.ts", "require": "./lib/sqlite-runtime.js", "default": "./lib/sqlite-runtime.js" },
+    "./ccswitch": { "types": "./types/ccswitch.d.ts", "require": "./lib/ccswitch/index.js", "default": "./lib/ccswitch/index.js" },
+    "./proxy/claude": { "types": "./types/proxy.d.ts", "require": "./lib/proxy/claude.js", "default": "./lib/proxy/claude.js" },
+    "./proxy/codex": { "types": "./types/proxy.d.ts", "require": "./lib/proxy/codex.js", "default": "./lib/proxy/codex.js" },
+    "./proxy/codex-transform": { "types": "./types/proxy.d.ts", "require": "./lib/proxy/codex-transform.js", "default": "./lib/proxy/codex-transform.js" },
+    "./web-api": { "types": "./types/web-api.d.ts", "require": "./lib/web-api.js", "default": "./lib/web-api.js" },
+    "./api-metadata": { "types": "./types/api-metadata.d.ts", "require": "./lib/api-metadata.js", "default": "./lib/api-metadata.js" },
+    "./schema/capabilities": "./schema/capabilities.schema.json",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "cpr": "cli/index.js"
   },
   "scripts": {
     "test": "node --test --test-concurrency=1 test/*.test.js",
     "lint": "find lib cli test -name '*.js' -type f -exec node --check {} +",
-    "test:scripts": "bash -n scripts/install.sh scripts/upgrade.sh scripts/uninstall.sh && node test/scripts-static.test.js"
+    "test:scripts": "bash -n scripts/install.sh scripts/upgrade.sh scripts/uninstall.sh && node --test test/scripts-static.test.js",
+    "test:contract": "node --test test/api-contract.test.js",
+    "test:pack": "node --test test/release-package.test.js",
+    "pack:release": "node scripts/pack-release.js"
   },
   "keywords": [
     "claude-code",
@@ -53,6 +80,8 @@
     "SECURITY.md",
     "CONTRIBUTING.md",
     "docs",
+    "types",
+    "schema",
     "scripts",
     "web",
     "LICENSE"
