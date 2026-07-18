@@ -12,8 +12,19 @@ const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const pkg = require('../package.json');
 
+function resolveCommand(command, args) {
+  if (command !== 'npm') return { command, args };
+  const npmCli = [
+    process.env.npm_execpath,
+    path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ].find(file => file && fs.existsSync(file));
+  if (npmCli) return { command: process.execPath, args: [npmCli, ...args] };
+  return { command: process.platform === 'win32' ? 'npm.cmd' : 'npm', args };
+}
+
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', timeout: 120000, ...options });
+  const invocation = resolveCommand(command, args);
+  const result = spawnSync(invocation.command, invocation.args, { cwd: root, encoding: 'utf8', timeout: 120000, ...options });
   assert.ifError(result.error);
   assert.equal(result.status, 0, `${command} ${args.join(' ')}\n${result.stderr || result.stdout}`);
   return result;

@@ -35,8 +35,10 @@ test('hop credentials fail closed for missing, wrong, cross-route, expired and r
     store.revoke({ id: replacement.id }, 'test');
     assert.equal(store.verify(route(), replacement.token).reason, 'revoked');
 
-    assert.equal(fs.statSync(path.join(home, 'run')).mode & 0o777, 0o700);
-    assert.equal(fs.statSync(store.dataFile).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') {
+      assert.equal(fs.statSync(path.join(home, 'run')).mode & 0o777, 0o700);
+      assert.equal(fs.statSync(store.dataFile).mode & 0o777, 0o600);
+    }
     assert.doesNotMatch(fs.readFileSync(store.dataFile, 'utf8'), new RegExp(replacement.token));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });

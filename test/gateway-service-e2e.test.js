@@ -150,7 +150,7 @@ test('managed service starts proxy and Web together, preserves token across rest
   assert.equal(started.running, true);
   assert.equal(started.webPort, webPort);
   assert.equal(started.health.webUrl, `http://127.0.0.1:${webPort}`);
-  assert.equal(mode(paths.adminTokenFile), 0o600);
+  if (process.platform !== 'win32') assert.equal(mode(paths.adminTokenFile), 0o600);
   const token = fs.readFileSync(paths.adminTokenFile, 'utf8').trim();
   assert.ok(token.length >= 32);
 

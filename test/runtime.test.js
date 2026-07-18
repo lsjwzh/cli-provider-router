@@ -12,6 +12,9 @@ const cpr = require('../lib');
 
 function temporaryHome() { return fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-runtime-')); }
 function mode(file) { return fs.statSync(file).mode & 0o777; }
+function assertMode(file, expected) {
+  if (process.platform !== 'win32') assert.strictEqual(mode(file), expected);
+}
 function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -49,11 +52,11 @@ test('CPR_HOME paths and atomic JSON are isolated and private', () => {
     assert.strictEqual(paths.home, home);
     assert.strictEqual(paths.providersFile, path.join(home, 'data', 'providers.json'));
     for (const dir of [paths.home, paths.dataDir, paths.configDir, paths.runDir, paths.logsDir]) {
-      assert.strictEqual(mode(dir), 0o700);
+      assertMode(dir, 0o700);
     }
     cpr.writeJsonAtomic(paths.settingsFile, { port: 4567 });
     assert.deepStrictEqual(cpr.readJson(paths.settingsFile), { port: 4567 });
-    assert.strictEqual(mode(paths.settingsFile), 0o600);
+    assertMode(paths.settingsFile, 0o600);
     assert.deepStrictEqual(fs.readdirSync(paths.configDir), ['settings.json']);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
@@ -67,7 +70,7 @@ test('provider store copies the legacy CPR_HOME file without deleting it', () =>
     assert.strictEqual(store.listProviders('claude')[0].name, 'Legacy');
     assert.ok(fs.existsSync(legacyFile));
     assert.ok(fs.existsSync(path.join(home, 'data', 'providers.json')));
-    assert.strictEqual(mode(path.join(home, 'data', 'providers.json')), 0o600);
+    assertMode(path.join(home, 'data', 'providers.json'), 0o600);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });
 
@@ -87,7 +90,7 @@ test('route profiles persist host-independent routing DTOs', () => {
     const updated = routes.update(created.id, { enabled: false, name: 'Paused' });
     assert.strictEqual(updated.name, 'Paused');
     assert.strictEqual(routes.resolve('claude', created.id), null);
-    assert.strictEqual(mode(routes._dataFile), 0o600);
+    assertMode(routes._dataFile, 0o600);
     assert.strictEqual(routes.remove(created.id), true);
     assert.deepStrictEqual(routes.list(), []);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
@@ -121,8 +124,8 @@ test('standalone service supports start, health, restart, and stop', async () =>
     const started = await controller.start({ port, timeoutMs: 8000 });
     assert.strictEqual(started.running, true);
     assert.strictEqual(started.health.home, home);
-    assert.strictEqual(mode(paths.servicePidFile), 0o600);
-    assert.strictEqual(mode(paths.serviceStateFile), 0o600);
+    assertMode(paths.servicePidFile, 0o600);
+    assertMode(paths.serviceStateFile, 0o600);
     assert.ok(fs.existsSync(paths.serviceLogFile));
     const oldPid = started.pid;
     const restarted = await controller.restart({ port, timeoutMs: 8000 });

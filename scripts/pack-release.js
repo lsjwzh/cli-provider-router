@@ -18,8 +18,19 @@ function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
+function resolveCommand(command, args) {
+  if (command !== 'npm') return { command, args };
+  const npmCli = [
+    process.env.npm_execpath,
+    path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ].find(file => file && fs.existsSync(file));
+  if (npmCli) return { command: process.execPath, args: [npmCli, ...args] };
+  return { command: process.platform === 'win32' ? 'npm.cmd' : 'npm', args };
+}
+
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', ...options });
+  const invocation = resolveCommand(command, args);
+  const result = spawnSync(invocation.command, invocation.args, { cwd: root, encoding: 'utf8', ...options });
   if (result.error) fail(`${command} failed: ${result.error.message}`);
   if (result.status !== 0) fail(`${command} ${args.join(' ')} failed\n${result.stderr || result.stdout}`.trim());
   return String(result.stdout || '').trim();

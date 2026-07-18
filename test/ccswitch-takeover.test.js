@@ -110,9 +110,11 @@ test('snapshot, preview, apply, status and field-level restore are reversible an
   const snap = await takeover.snapshot(ctx);
   assert.throws(() => takeover.readSnapshot(ctx.home, '../../outside'), error => error.code === 'INVALID_SNAPSHOT_ID');
   assert.ok(fs.existsSync(snap.backupPath));
-  assert.equal(fs.statSync(snap.backupPath).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(path.join(snap.dir, 'manifest.json')).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(path.join(snap.dir, 'endpoints.json')).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(snap.backupPath).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(snap.dir, 'manifest.json')).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(snap.dir, 'endpoints.json')).mode & 0o777, 0o600);
+  }
   const before = takeover.preview({ ...ctx, snapshotId: snap.snapshotId, proxyBaseUrl, allProviders: true });
   assert.equal(before.canApply, true);
   assert.equal(before.changes.length, 4);
@@ -120,8 +122,10 @@ test('snapshot, preview, apply, status and field-level restore are reversible an
 
   const applied = await applyAll(ctx, { snapshotId: snap.snapshotId, proxyBaseUrl });
   assert.equal(applied.changed, 4);
-  assert.equal(fs.statSync(path.join(ctx.home, 'ccswitch', 'state.json')).mode & 0o777, 0o600);
-  assert.equal(fs.statSync(path.join(ctx.home, 'ccswitch', 'audit.jsonl')).mode & 0o777, 0o600);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(path.join(ctx.home, 'ccswitch', 'state.json')).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(path.join(ctx.home, 'ccswitch', 'audit.jsonl')).mode & 0o777, 0o600);
+  }
   const claude = readProvider(ctx.dbPath, 'claude-one', 'claude');
   const codex = readProvider(ctx.dbPath, 'codex-one', 'codex');
   assert.match(claude.env.ANTHROPIC_BASE_URL, /ccswitch\/claude\/claude-one$/);

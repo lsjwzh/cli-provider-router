@@ -61,7 +61,7 @@ test('usage ledger is idempotent, private, queryable, and never persists content
     assert.deepStrictEqual(byDateAndRole.map(row => [row.date, row.role]), [['2026-07-15', 'sub'], ['2026-07-15', 'main']]);
     const shard = fs.readdirSync(path.join(home, 'data', 'usage')).find(name => name.endsWith('.jsonl'));
     const shardPath = path.join(home, 'data', 'usage', shard);
-    assert.strictEqual(fs.statSync(shardPath).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.strictEqual(fs.statSync(shardPath).mode & 0o777, 0o600);
     assert.doesNotMatch(fs.readFileSync(shardPath, 'utf8'), /must never persist/);
   } finally { fs.rmSync(home, { recursive: true, force: true }); }
 });

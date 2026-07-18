@@ -34,7 +34,7 @@
     "cpr": "cli/index.js"
   },
   "scripts": {
-    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test": "node test/run-all.js",
     "lint": "find lib cli test -name '*.js' -type f -exec node --check {} +",
     "test:scripts": "bash -n scripts/install.sh scripts/upgrade.sh scripts/uninstall.sh && node --test test/scripts-static.test.js",
     "test:contract": "node --test test/api-contract.test.js",

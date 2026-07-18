@@ -197,8 +197,10 @@ test('snapshots and state use private permissions and reject traversal ids', () 
     const result = f.manager.apply({ cli: 'claude', profileId: f.profiles.claude.id });
     const manifest = path.join(f.manager.paths.snapshotsDir, result.snapshotId, 'manifest.json');
     const state = path.join(f.manager.paths.stateDir, 'claude.json');
-    assert.equal(fs.statSync(path.dirname(manifest)).mode & 0o777, 0o700);
-    assert.equal(fs.statSync(manifest).mode & 0o777, 0o600);
-    assert.equal(fs.statSync(state).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') {
+      assert.equal(fs.statSync(path.dirname(manifest)).mode & 0o777, 0o700);
+      assert.equal(fs.statSync(manifest).mode & 0o777, 0o600);
+      assert.equal(fs.statSync(state).mode & 0o777, 0o600);
+    }
   } finally { cleanup(f); }
 });
