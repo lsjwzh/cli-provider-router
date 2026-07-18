@@ -17,16 +17,17 @@ test('package, JavaScript API and capability versions are explicit semver contra
   assert.ok(Object.isFrozen(api.CAPABILITIES));
   assert.deepEqual(Object.keys(api.CAPABILITIES).sort(), [
     'agentRouting', 'ccSwitchReadOnlyImport', 'ccSwitchTakeover',
-    'directCliTakeover', 'hostEmbedding', 'httpTarget', 'managedHopCredentials',
-    'managedRouteCredential', 'managedService', 'modelPolicy', 'normalizedUsage',
-    'protocolProxy', 'providerStore', 'spawnEnvironment', 'takeoverLifecycle', 'webConsole',
+    'directCliTakeover', 'durableConfigStore', 'hostEmbedding', 'httpTarget',
+    'managedHopCredentials', 'managedRouteCredential', 'managedService',
+    'modelPolicy', 'normalizedUsage', 'protocolProxy', 'providerStore',
+    'spawnEnvironment', 'takeoverLifecycle', 'webConsole',
   ]);
   for (const version of Object.values(api.CAPABILITIES)) assert.match(version, /^\d+\.\d+$/);
 });
 
 test('explicit root facade retains the complete 0.2 compatibility surface', () => {
   const modules = [
-    'constants', 'spawn-env', 'routing', 'paths', 'atomic-json',
+    'constants', 'spawn-env', 'routing', 'paths', 'atomic-json', 'durable-store',
     'route-profile-store', 'service', 'usage-ledger', 'settings-store',
     'direct-cli-config', 'sqlite-runtime', 'proxy/codex-transform', 'web-api',
     'model-policy', 'http-target', 'host-embedding',
