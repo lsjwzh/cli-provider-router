@@ -192,7 +192,10 @@ function cmdUse(args) {
   const { appType, id, summary } = findProvider(st, ref, args.flags.app || cliHint);
   const cliForEnv = appType === 'codex' ? 'codex' : 'claude';
   const built = cpr.buildChildEnv(process.env, { cli: cliForEnv, providerId: id, store: st });
-  const childEnv = { ...process.env, ...built.env };
+  // buildChildEnv returns the complete, scrubbed environment. Re-merging the
+  // parent here would resurrect stale routing selectors such as CODEX_HOME or
+  // ANTHROPIC_DEFAULT_* and defeat its fail-closed contract.
+  const childEnv = built.env;
   console.error(C.dim(`→ routing ${cmd} via ${summary.name} (${appType})`));
   const child = spawn(rest[0], rest.slice(1), { env: childEnv, stdio: 'inherit' });
   child.on('exit', (code, signal) => {
