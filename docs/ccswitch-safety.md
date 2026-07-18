@@ -21,13 +21,19 @@ snapshot-ready --> previewed --> active --> restoring --> unmanaged
                                   +--> conflict
 ```
 
-Every transition must be persisted in `CPR_HOME/data/integration-state.json` with the CC-Switch database identity, snapshot identifier, selected providers, original-field hashes, proxy address, and timestamp. `active` must not be written until both the database transaction and proxy health check succeed.
+Every transition is persisted in the single authoritative state file
+`CPR_HOME/ccswitch/state.json`, with the CC-Switch database identity, snapshot
+identifier, selected providers, proxy address, and timestamp. A persisted
+unknown, partial, or unreadable state fails closed. `active` is not written
+until the proxy health nonce matches, the database transaction commits, and
+all managed fields pass a post-write read-back verification.
 
 ## Snapshot requirements
 
 Before any write, CPR must:
 
-1. Confirm the proxy is healthy and listening on loopback.
+1. Confirm the proxy is healthy and listening on loopback, and require the
+   service-generated per-process health nonce to match.
 2. Detect CC-Switch schema/version and reject unknown layouts.
 3. Refuse operation if CC-Switch's own local-routing takeover is active or another CPR operation is unfinished.
 4. Create a consistent SQLite snapshot using the SQLite backup API. A plain copy of a live database is invalid when WAL may be active.
@@ -40,6 +46,9 @@ Snapshots contain credentials and must never be uploaded or attached to issues.
 ## Apply requirements
 
 - Show a preview of every selected `original URL → local URL` change.
+- Require at least one explicitly selected provider. Selecting every provider
+  is a separate operation with the exact confirmation
+  `TAKE OVER ALL PROVIDERS`.
 - Rewrite only allowlisted provider endpoint fields inside one SQLite transaction.
 - Use provider-specific local URLs so the proxy can select the saved upstream without reading its own rewritten value.
 - Read upstream endpoints from CPR's verified integration snapshot/state, not the modified CC-Switch rows. This prevents localhost routing loops.
@@ -66,13 +75,23 @@ Normal restore is field-level, not whole-database replacement:
 
 A full snapshot replacement is a separately labeled disaster-recovery operation. It must stop writers, preserve the current database as another recovery artifact, and warn that unrelated later changes may be lost.
 
+The disaster operation additionally requires `writerStopped=true`, an
+exclusive SQLite lock, a matching logical database path and schema, a private
+copy of the displaced database/WAL/SHM files, and integrity/schema verification
+before the rollback copy is discarded.
+
 ## Web controls
 
 The Web console exposes status/schema detection, snapshot creation, diff preview, apply, restore, conflicts, and proxy health. Write operations require the loopback guard, admin token, same-origin checks, and typed confirmation.
 
 ## Shutdown and uninstall
 
-The daemon must refuse a normal stop that would strand active CC-Switch endpoints unless a supervised handoff or restore is completed. Install scripts must refuse uninstall when integration state is active. Force options must not bypass restoration silently.
+The daemon must refuse SIGINT, SIGTERM, normal stop, restart, or force-stop
+escalation that would strand an active CC-Switch or native CLI takeover unless
+a supervised handoff or restore is completed. Install scripts must read the
+same authoritative CC-Switch state path and refuse uninstall when any takeover
+state is active, invalid, partial, or unknown. Force options must not bypass
+restoration silently.
 
 ## Test matrix
 

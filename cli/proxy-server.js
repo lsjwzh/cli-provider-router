@@ -7,6 +7,7 @@ const express = require('express');
 const cpr = require('../lib/index');
 const { createCprPaths, ensureCprPaths, DEFAULT_PROXY_PORT } = require('../lib/paths');
 const { atomicWriteFile, writeJsonAtomic, removeFile } = require('../lib/atomic-json');
+const { createTakeoverStateStore } = require('../lib/takeover-state');
 
 function argOf(name, def) {
   const i = process.argv.indexOf(`--${name}`);
@@ -60,6 +61,7 @@ async function startServer(options = {}) {
     proxyBaseUrl: `http://127.0.0.1:${port}`,
   });
   const adminToken = options.adminToken || readOrCreateAdminToken(paths.adminTokenFile);
+  const takeoverNonce = options.takeoverNonce || crypto.randomBytes(24).toString('base64url');
   usageLedger.prune();
   const startedAt = Date.now();
   const onUsageEvent = event => {
@@ -77,6 +79,7 @@ async function startServer(options = {}) {
   proxyApp.use(express.json({ limit: '25mb' }));
   proxyApp.get('/health', (_req, res) => res.status(serviceReady ? 200 : 503).json({
     ok: serviceReady, product: 'cli-provider-router-proxy', pid: process.pid, port, webPort,
+    takeoverNonce,
     webUrl: `http://127.0.0.1:${webPort}`, adminTokenFile: paths.adminTokenFile,
     home: paths.home, startedAt,
   }));
@@ -93,7 +96,12 @@ async function startServer(options = {}) {
       store,
       routeProfiles,
       ccSwitch: cpr.ccSwitchTakeover,
-      ccSwitchOptions: { home: paths.home, dbPath: ccDb, proxyBaseUrl: `http://127.0.0.1:${port}` },
+      ccSwitchOptions: {
+        home: paths.home,
+        dbPath: ccDb,
+        proxyBaseUrl: `http://127.0.0.1:${port}`,
+        healthNonce: takeoverNonce,
+      },
       proxyBaseUrl: `http://127.0.0.1:${port}`,
       usageLedger,
       settings,
@@ -127,6 +135,8 @@ async function startServer(options = {}) {
   let closingPromise = null;
   function close(signal = 'programmatic') {
     if (closingPromise) return closingPromise;
+    try { createTakeoverStateStore(paths).assertCanStop('stop CPR service'); }
+    catch (error) { return Promise.reject(error); }
     closingPromise = (async () => {
       clearInterval(heartbeat);
       await Promise.all([closeHttp(proxyServer), web.close()]);
@@ -140,16 +150,17 @@ async function startServer(options = {}) {
   }
 
   for (const signal of ['SIGINT', 'SIGTERM']) {
-    process.once(signal, () => {
+    // Keep the handler installed after a refused signal. With `once`, a
+    // second SIGTERM would fall through to Node's default termination and
+    // bypass takeover protection.
+    process.on(signal, () => {
       close(signal).then(() => process.exit(0), error => {
-        console.error(`[cli-provider-router] shutdown failed: ${error.message}`);
-        process.exit(1);
+        console.error(`[cli-provider-router] shutdown refused: ${error.message}`);
       });
-      setTimeout(() => process.exit(1), 5000).unref();
     });
   }
 
-  return { proxyApp, proxyServer, web, paths, port, webPort, adminToken, state, close, store, routeProfiles, usageLedger, settings, directCliConfig };
+  return { proxyApp, proxyServer, web, paths, port, webPort, adminToken, takeoverNonce, state, close, store, routeProfiles, usageLedger, settings, directCliConfig };
 }
 
 if (require.main === module) {

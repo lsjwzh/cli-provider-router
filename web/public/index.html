@@ -63,7 +63,8 @@
 
       <section id="page-ccswitch" class="page">
         <div class="heading"><div><h1>CC-Switch Takeover</h1><p>This writes reversible local proxy URLs. It is separate from MultiCC's read-only sync.</p></div><button id="cc-refresh">Detect / Status</button></div>
-        <div class="warning">Apply and restore require an exact confirmation phrase. Always inspect the preview first.</div>
+        <div class="warning">Select providers explicitly. Taking over every provider requires a second, stronger confirmation. Always inspect the preview first.</div>
+        <div class="panel"><strong>Providers to manage</strong><div class="toolbar compact"><button id="cc-select-all" type="button">Select all</button><button id="cc-clear-selection" type="button">Clear</button></div><div id="cc-provider-list" class="provider-choices"></div></div>
         <div class="toolbar">
           <button id="cc-preview">Preview changes</button>
           <button id="cc-snapshot">Create snapshot</button>

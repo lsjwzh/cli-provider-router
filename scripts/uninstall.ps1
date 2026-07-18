@@ -9,23 +9,20 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Test-TakeoverActive([object]$State) {
-    $Entries = @($State, $State.ccSwitch, $State.ccswitch, $State.takeover, $State.integration) | Where-Object { $null -ne $_ }
-    foreach ($Entry in $Entries) {
-        if ($Entry.takeoverActive -eq $true -or $Entry.active -eq $true) { return $true }
-        if (@('active', 'applying', 'restoring') -contains ([string]$Entry.status).ToLowerInvariant()) { return $true }
-    }
-    return $false
+    if ($null -eq $State -or $State -isnot [PSCustomObject]) { return $true }
+    $Phase = ([string]$State.status).ToLowerInvariant()
+    return -not (@('inactive', 'restored', 'full-restored') -contains $Phase)
 }
 
 function Test-DirectCliTakeoverActive([object]$State) {
-    if ($null -eq $State -or $State -isnot [PSCustomObject]) { return $false }
+    if ($null -eq $State -or $State -isnot [PSCustomObject]) { return $true }
     if ($State.active -eq $false) { return $false }
-    if (-not [string]::IsNullOrWhiteSpace([string]$State.snapshotId)) { return $true }
-    if ($null -ne $State.appliedFiles) { return $true }
-    return @('active', 'applying', 'restoring') -contains ([string]$State.status).ToLowerInvariant()
+    $Phase = ([string]$State.status).ToLowerInvariant()
+    if (@('inactive', 'restored', 'full-restored') -contains $Phase) { return $false }
+    return $true
 }
 
-foreach ($StateFile in @((Join-Path $CprHome 'data\integration-state.json'), (Join-Path $CprHome 'integration-state.json'))) {
+foreach ($StateFile in @((Join-Path $CprHome 'ccswitch\state.json'))) {
     if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) { continue }
     try { $State = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json }
     catch { throw "cannot validate integration state ${StateFile}: $($_.Exception.Message)" }

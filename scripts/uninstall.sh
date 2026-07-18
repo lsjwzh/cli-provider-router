@@ -34,7 +34,7 @@ done
 
 command -v node >/dev/null || { echo "error: Node.js is required to validate takeover state before uninstall" >&2; exit 1; }
 
-STATE_FILES=("$CPR_HOME_VALUE/data/integration-state.json" "$CPR_HOME_VALUE/integration-state.json")
+STATE_FILES=("$CPR_HOME_VALUE/ccswitch/state.json")
 for state_file in "${STATE_FILES[@]}"; do
   [[ -e "$state_file" ]] || continue
   if ! node - "$state_file" <<'NODE'
@@ -46,9 +46,10 @@ catch (error) {
   console.error(`error: cannot validate integration state ${file}: ${error.message}`);
   process.exit(2);
 }
-const entries = [state, state.ccSwitch, state.ccswitch, state.takeover, state.integration].filter(Boolean);
-const active = entries.some(x => x.takeoverActive === true || x.active === true ||
-  ['active', 'applying', 'restoring'].includes(String(x.status || '').toLowerCase()));
+const phase = String(state.status || '').toLowerCase();
+const inactive = ['inactive', 'restored', 'full-restored'].includes(phase);
+// Unknown or missing phases fail closed when a state file exists.
+const active = !inactive;
 if (active) {
   console.error(`error: CC-Switch takeover is active according to ${file}`);
   console.error('Restore CC-Switch endpoints before uninstalling cli-provider-router.');
@@ -73,13 +74,13 @@ catch (error) {
   console.error(`error: cannot validate direct CLI takeover state ${file}: ${error.message}`);
   process.exit(2);
 }
-const active = state && typeof state === 'object' && (
-  state.active !== false && (
-    typeof state.snapshotId === 'string' ||
-    Array.isArray(state.appliedFiles) ||
-    ['active', 'applying', 'restoring'].includes(String(state.status || '').toLowerCase())
-  )
-);
+const valid = state && typeof state === 'object' && !Array.isArray(state);
+const phase = valid ? String(state.status || '').toLowerCase() : '';
+// Direct takeover currently removes its state after restore. If a state file
+// exists, only an explicit inactive/restored marker may allow uninstall;
+// unknown/partial formats fail closed.
+const inactive = valid && (state.active === false || ['inactive', 'restored', 'full-restored'].includes(phase));
+const active = !inactive;
 if (active) {
   const cli = state.cli || 'native CLI';
   console.error(`error: direct ${cli} configuration takeover is active according to ${file}`);
