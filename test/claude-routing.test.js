@@ -150,11 +150,20 @@ async function main() {
       ANTHROPIC_AUTH_TOKEN: 'sub-secret',
       ANTHROPIC_DEFAULT_SONNET_MODEL: 'sub-wire-model[1M]',
     }),
+    // Exists in the store but has NO baseUrl and is not `claude-official` —
+    // must keep failing closed even on the subagent route (never borrow the
+    // subscription token for an arbitrary empty-baseUrl provider).
+    'empty-base': {
+      name: 'Empty Base',
+      settingsConfig: { env: { ANTHROPIC_AUTH_TOKEN: 'empty-secret' } },
+    },
   };
   const usageEvents = [];
+  const routingEvents = [];
   const proxy = await listen(createHandler({
     getProvider: (_appType, id) => providers[id] || null,
     onUsage: info => usageEvents.push(info),
+    onRoutingEvent: event => routingEvents.push(event),
   }));
 
   try {
@@ -271,14 +280,67 @@ async function main() {
       });
     });
 
-    await test('unknown routed provider fails closed', async () => {
+    await test('dangling subagent provider fails open to the main provider', async () => {
+      const mainSeen = mainRequests.length;
       const response = await request({
         port: proxy.port,
         path: '/claude-proxy/main/session-3/v1/messages',
-        body: { model: 'ccfw:missing:sonnet', stream: true, messages: [] },
+        body: { model: 'ccfw:missing:sub-real-model', stream: true, messages: [] },
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(response.status, 200, 'no longer 502');
+      assert.strictEqual(response.body, mainSse);
+      assert.strictEqual(mainRequests.length, mainSeen + 1, 'forwarded to the MAIN upstream');
+      const seen = mainRequests[mainSeen];
+      assert.strictEqual(seen.req.url, '/main-base/v1/messages');
+      assert.strictEqual(seen.req.headers['x-api-key'], 'main-secret', 'main creds used');
+      assert.strictEqual(JSON.parse(seen.body).model, 'sub-real-model', 'decoded real model still sent');
+      // Exactly one fallback event, mirroring spawn-env's shape.
+      assert.strictEqual(routingEvents.length, 1);
+      const event = routingEvents[0];
+      assert.strictEqual(event.type, 'provider-routing-fallback');
+      assert.strictEqual(event.status, 'default-fallback');
+      assert.strictEqual(event.reason, 'unknown-sub-provider');
+      assert.strictEqual(event.providerId, 'missing');
+      assert.strictEqual(event.fallbackProviderId, 'main');
+      assert.strictEqual(event.error.code, 'PROVIDER_NOT_FOUND');
+      // Usage is attributed to the provider that actually served the request.
+      const usage = usageEvents[usageEvents.length - 1];
+      assert.strictEqual(usage.role, 'sub');
+      assert.strictEqual(usage.providerId, 'main');
+      assert.strictEqual(usage.providerName, 'Main Provider');
+    });
+
+    await test('subagent provider that exists with an empty baseUrl still fails closed', async () => {
+      const response = await request({
+        port: proxy.port,
+        path: '/claude-proxy/main/session-3/v1/messages',
+        body: { model: 'ccfw:empty-base:some-model', stream: true, messages: [] },
       });
       assert.strictEqual(response.status, 502);
-      assert.match(response.body, /provider 'missing' has no baseUrl/);
+      assert.match(response.body, /provider 'empty-base' has no baseUrl/);
+      assert.strictEqual(routingEvents.length, 1, 'no fallback event for the empty-baseUrl invariant');
+    });
+
+    await test('unknown MAIN provider still fails closed (no fallback)', async () => {
+      const response = await request({
+        port: proxy.port,
+        path: '/claude-proxy/ghost/session-3/v1/messages',
+        body: { model: 'plain-model', stream: true, messages: [] },
+      });
+      assert.strictEqual(response.status, 502);
+      assert.match(response.body, /provider 'ghost' has no baseUrl/);
+      assert.strictEqual(routingEvents.length, 1, 'main route never falls back');
+    });
+
+    await test('subagent route pointing at its own missing main provider still fails closed', async () => {
+      const response = await request({
+        port: proxy.port,
+        path: '/claude-proxy/ghost/session-3/v1/messages',
+        body: { model: 'ccfw:ghost:some-model', stream: true, messages: [] },
+      });
+      assert.strictEqual(response.status, 502, 'sub == main and both missing → nothing to fall back to');
+      assert.strictEqual(routingEvents.length, 1);
     });
   } finally {
     await close(proxy.server);
