@@ -6,6 +6,16 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Added
 
+- Metadata-only proxy liveness events: both the Claude and Codex proxies accept
+  an optional `onActivity` callback fired at three moments per turn —
+  `request` (forwarding to the upstream started), `first_byte` (first upstream
+  response byte, with `latencyMs`), and `end` (turn finished, with
+  `status: 'success' | 'error'`). Payloads carry only routing metadata
+  (sessionId/role/providerId/providerName/phase/at/latencyMs/status) — never
+  request/response bodies, headers, tokens, or model output — and callback
+  errors are swallowed without disturbing the forwarded stream. Declared as
+  the `activityEvents` capability; JavaScript API version is now `1.2.0`.
+
 - Durable config-store layer (`cli-provider-router/durable-store`) shared by the
   provider, route-profile, and settings stores: schema envelopes with monotonic
   revisions, rolling on-write backups with transparent recovery

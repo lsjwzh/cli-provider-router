@@ -157,13 +157,20 @@ async function main() {
       name: 'Empty Base',
       settingsConfig: { env: { ANTHROPIC_AUTH_TOKEN: 'empty-secret' } },
     },
+    // Points at a closed port so up.request errors — exercises the activity
+    // 'end' event on the connect-failure path.
+    dead: makeProvider('Dead Provider', 'http://127.0.0.1:1/dead', {
+      ANTHROPIC_AUTH_TOKEN: 'dead-secret',
+    }),
   };
   const usageEvents = [];
   const routingEvents = [];
+  const activityEvents = [];
   const proxy = await listen(createHandler({
     getProvider: (_appType, id) => providers[id] || null,
     onUsage: info => usageEvents.push(info),
     onRoutingEvent: event => routingEvents.push(event),
+    onActivity: event => activityEvents.push(event),
   }));
 
   try {
@@ -341,6 +348,83 @@ async function main() {
       });
       assert.strictEqual(response.status, 502, 'sub == main and both missing → nothing to fall back to');
       assert.strictEqual(routingEvents.length, 1);
+    });
+
+    await test('activity callback fires request → first_byte → end with metadata only', async () => {
+      activityEvents.length = 0;
+      const response = await request({
+        port: proxy.port,
+        path: '/claude-proxy/main/session-act/v1/messages',
+        body: { model: 'main-wire-model', stream: true, messages: [] },
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(response.status, 200);
+      assert.deepStrictEqual(activityEvents.map(e => e.phase), ['request', 'first_byte', 'end']);
+      const allowed = ['sessionId', 'role', 'providerId', 'providerName', 'phase', 'at', 'latencyMs', 'status'];
+      for (const event of activityEvents) {
+        assert.strictEqual(event.sessionId, 'session-act');
+        assert.strictEqual(event.role, 'main');
+        assert.strictEqual(event.providerId, 'main');
+        assert.strictEqual(event.providerName, 'Main Provider');
+        assert.strictEqual(typeof event.at, 'number');
+        // Hard boundary: no body / headers / tokens / model output — only the
+        // whitelisted metadata keys may appear.
+        for (const key of Object.keys(event)) {
+          assert.ok(allowed.includes(key), `unexpected activity payload key: ${key}`);
+        }
+        const flat = JSON.stringify(event);
+        assert.doesNotMatch(flat, /main-secret|sub-secret|messages/);
+      }
+      assert.strictEqual(typeof activityEvents[1].latencyMs, 'number');
+      assert.strictEqual(activityEvents[2].status, 'success');
+    });
+
+    await test('subagent activity events carry the sub role and routed provider', async () => {
+      activityEvents.length = 0;
+      const response = await request({
+        port: proxy.port,
+        path: '/claude-proxy/main/session-act/v1/messages',
+        body: { model: 'ccfw:sub:sonnet', stream: true, messages: [] },
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(response.status, 200);
+      assert.deepStrictEqual(activityEvents.map(e => e.phase), ['request', 'first_byte', 'end']);
+      for (const event of activityEvents) {
+        assert.strictEqual(event.role, 'sub');
+        assert.strictEqual(event.providerId, 'sub');
+        assert.strictEqual(event.providerName, 'Sub Provider');
+      }
+    });
+
+    await test('upstream connect failure ends activity with status=error and no first_byte', async () => {
+      activityEvents.length = 0;
+      const response = await request({
+        port: proxy.port,
+        path: '/claude-proxy/dead/session-act/v1/messages',
+        body: { model: 'any-model', stream: true, messages: [] },
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(response.status, 502);
+      assert.deepStrictEqual(activityEvents.map(e => e.phase), ['request', 'end']);
+      assert.strictEqual(activityEvents[1].status, 'error');
+    });
+
+    await test('a throwing onActivity callback never disturbs the forwarded response', async () => {
+      const throwingProxy = await listen(createHandler({
+        getProvider: (_appType, id) => providers[id] || null,
+        onActivity: () => { throw new Error('activity handler exploded'); },
+      }));
+      try {
+        const response = await request({
+          port: throwingProxy.port,
+          path: '/claude-proxy/main/session-act/v1/messages',
+          body: { model: 'main-wire-model', stream: true, messages: [] },
+        });
+        assert.strictEqual(response.status, 200);
+        assert.strictEqual(response.body, mainSse, 'SSE bytes intact despite callback throwing');
+      } finally {
+        await close(throwingProxy.server);
+      }
     });
   } finally {
     await close(proxy.server);

@@ -317,6 +317,7 @@ async function main() {
   };
   const usageEvents = [];
   const detailedUsageEvents = [];
+  const activityEvents = [];
   const hopHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cpr-hop-routing-'));
   const hopCredentials = createHopCredentialStore({ cprHome: hopHome });
   const workerCredential = hopCredentials.issue({
@@ -330,6 +331,7 @@ async function main() {
     getPort: () => 0,
     onUsage: info => usageEvents.push(info),
     onUsageEvent: info => detailedUsageEvents.push(info),
+    onActivity: event => activityEvents.push(event),
     hopCredentials,
   });
   const proxy = await listen(app);
@@ -421,6 +423,71 @@ async function main() {
       assert.strictEqual(missing.status, 404);
       assert.strictEqual(mainRequests.length, 1);
       assert.strictEqual(subRequests.length, 2);
+    });
+
+    await test('activity callback fires request → first_byte → end on both codex modes', async () => {
+      const allowed = ['sessionId', 'role', 'providerId', 'providerName', 'phase', 'at', 'latencyMs', 'status'];
+      const checkSequence = (events, { role, providerId, providerName }) => {
+        assert.deepStrictEqual(events.map(e => e.phase), ['request', 'first_byte', 'end']);
+        for (const event of events) {
+          assert.strictEqual(event.sessionId, 'session-act');
+          assert.strictEqual(event.role, role);
+          assert.strictEqual(event.providerId, providerId);
+          assert.strictEqual(event.providerName, providerName);
+          assert.strictEqual(typeof event.at, 'number');
+          for (const key of Object.keys(event)) {
+            assert.ok(allowed.includes(key), `unexpected activity payload key: ${key}`);
+          }
+          assert.doesNotMatch(JSON.stringify(event), /main-secret|sub-secret|input/);
+        }
+        assert.strictEqual(typeof events[1].latencyMs, 'number');
+        assert.strictEqual(events[2].status, 'success');
+      };
+
+      // direct-responses mode
+      activityEvents.length = 0;
+      const direct = await request({
+        port: proxy.port,
+        path: '/codex-proxy/main/session-act/main/responses',
+        body: { model: 'main-model', input: [], stream: true },
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(direct.status, 200);
+      checkSequence(activityEvents, { role: 'main', providerId: 'main', providerName: 'Main Responses' });
+
+      // chat-to-responses bridge mode
+      activityEvents.length = 0;
+      const bridged = await request({
+        port: proxy.port,
+        path: '/codex-proxy/sub/session-act/sub/responses',
+        body: { model: 'sub-model', input: [], stream: true },
+      });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(bridged.status, 200);
+      checkSequence(activityEvents, { role: 'sub', providerId: 'sub', providerName: 'Sub Chat' });
+    });
+
+    await test('a throwing onActivity callback never disturbs the codex response', async () => {
+      const throwingApp = express();
+      throwingApp.use(express.json());
+      mountCodexProxy(throwingApp, {
+        getProvider: (_appType, id) => providers[id] || null,
+        getPort: () => 0,
+        onActivity: () => { throw new Error('activity handler exploded'); },
+        hopCredentials,
+      });
+      const throwingProxy = await listen(throwingApp);
+      try {
+        const response = await request({
+          port: throwingProxy.port,
+          path: '/codex-proxy/main/session-act/main/responses',
+          body: { model: 'main-model', input: [], stream: true },
+        });
+        assert.strictEqual(response.status, 200);
+        assert.strictEqual(response.body, responsesSse('MAIN_OK', mainUsage), 'stream intact despite callback throwing');
+      } finally {
+        await close(throwingProxy.server);
+      }
     });
   } finally {
     await close(proxy.server);

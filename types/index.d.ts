@@ -129,7 +129,7 @@ export interface UsageEvent {
   [key: string]: unknown;
 }
 
-export const API_VERSION: '1.1.0';
+export const API_VERSION: '1.2.0';
 export const CAPABILITIES: Readonly<Record<string, string>>;
 export const APP_TYPES: readonly AppType[];
 export const DEFAULT_PROXY_PORT: number;
@@ -166,11 +166,27 @@ export const normalizeHopRole: (...args: any[]) => any;
 export const isActiveTakeoverState: (...args: any[]) => boolean;
 export const takeoverStatePhase: (...args: any[]) => string;
 export function sqliteRuntimeStatus(): { available: boolean; code: string | null; reason: string | null; message: string | null; repair: string | null };
-export function mountClaudeProxy(app: any, options?: Record<string, unknown>): any;
-export function mountCodexProxy(app: any, options?: Record<string, unknown>): any;
+// Metadata-only proxy liveness events (capability `activityEvents`): fired at
+// request-forward start, first upstream response byte, and turn end. Never
+// carries request/response bodies, headers, tokens, or model output.
+export interface ProxyActivityEvent {
+  sessionId: string;
+  role: AgentRole;
+  providerId: string;
+  providerName?: string;
+  phase: 'request' | 'first_byte' | 'end';
+  at: number;
+  latencyMs?: number;
+  status?: 'success' | 'error';
+}
+export interface ProxyMountOptions extends Record<string, unknown> {
+  onActivity?: (event: ProxyActivityEvent) => void;
+}
+export function mountClaudeProxy(app: any, options?: ProxyMountOptions): any;
+export function mountCodexProxy(app: any, options?: ProxyMountOptions): any;
 export function mountCcSwitchGateway(app: any, options?: Record<string, unknown>): any;
-export function createClaudeHandler(options?: Record<string, unknown>): (req: IncomingMessage, res: ServerResponse) => void;
-export function createCodexHandler(options?: Record<string, unknown>): (req: IncomingMessage, res: ServerResponse) => void;
+export function createClaudeHandler(options?: ProxyMountOptions): (req: IncomingMessage, res: ServerResponse) => void;
+export function createCodexHandler(options?: ProxyMountOptions): (req: IncomingMessage, res: ServerResponse) => void;
 export function createWebApp(options?: Record<string, unknown>): any;
 export function createWebServer(options?: Record<string, unknown>): any;
 
