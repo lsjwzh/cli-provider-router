@@ -16,7 +16,7 @@ test('package, JavaScript API and capability versions are explicit semver contra
   assert.equal(Number(api.API_VERSION.split('.')[0]), 1, 'embedding API major must remain 1');
   assert.ok(Object.isFrozen(api.CAPABILITIES));
   assert.deepEqual(Object.keys(api.CAPABILITIES).sort(), [
-    'agentRouting', 'ccSwitchReadOnlyImport', 'ccSwitchTakeover',
+    'activityEvents', 'agentRouting', 'ccSwitchReadOnlyImport', 'ccSwitchTakeover',
     'directCliTakeover', 'durableConfigStore', 'hostEmbedding', 'httpTarget',
     'managedHopCredentials', 'managedRouteCredential', 'managedService',
     'modelPolicy', 'normalizedUsage', 'protocolProxy', 'providerStore',
