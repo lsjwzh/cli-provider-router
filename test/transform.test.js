@@ -43,3 +43,33 @@ test('Chat SSE completion accumulates every text delta and cached token details'
     inputTokens: 18, outputTokens: 4, cacheWrite: 0, cacheRead: 12,
   });
 });
+
+test('onDelta sidecar receives reasoning/text/tool deltas verbatim from upstream', () => {
+  const chunks = [];
+  const deltas = [];
+  const transform = chatStreamToResponses(chunk => chunks.push(chunk), d => deltas.push(d));
+  // reasoning_content delta — codex Responses protocol has no reasoning stream, so
+  // it must NOT appear in the Responses output, but MUST reach the onDelta sidecar.
+  transform.pushLine(`data: ${JSON.stringify({ id: 'c', model: 'm', choices: [{ index: 0, delta: { reasoning_content: '思考' }, finish_reason: null }] })}`);
+  transform.pushLine(`data: ${JSON.stringify({ id: 'c', model: 'm', choices: [{ index: 0, delta: { reasoning_content: '一下' }, finish_reason: null }] })}`);
+  // text delta
+  transform.pushLine(`data: ${JSON.stringify({ id: 'c', model: 'm', choices: [{ index: 0, delta: { content: 'hi' }, finish_reason: null }] })}`);
+  // tool_call delta
+  transform.pushLine(`data: ${JSON.stringify({ id: 'c', model: 'm', choices: [{ index: 0, delta: { tool_calls: [{ id: 'tc1', function: { name: 'grep', arguments: '{"q":"x"' } }] }, finish_reason: null }] })}`);
+  transform.pushLine(`data: ${JSON.stringify({ id: 'c', model: 'm', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}`);
+  transform.pushLine('data: [DONE]');
+
+  // reasoning deltas reach the sidecar, verbatim and in order
+  assert.deepEqual(deltas.filter(d => d.type === 'reasoning').map(d => d.text), ['思考', '一下']);
+  // text delta reaches the sidecar
+  assert.equal(deltas.find(d => d.type === 'text').text, 'hi');
+  // tool delta reaches the sidecar with name + arguments fragment
+  const toolDelta = deltas.find(d => d.type === 'tool');
+  assert.equal(toolDelta.tool.name, 'grep');
+  assert.equal(toolDelta.tool.arguments, '{"q":"x"');
+  assert.equal(toolDelta.toolId, 'tc1');
+  // reasoning is NOT leaked into the Responses stream (codex CLI never sees it)
+  const sseText = chunks.join('');
+  assert.ok(!sseText.includes('思考'), 'reasoning must not appear in the Responses SSE');
+  assert.ok(sseText.includes('hi'), 'text still flows through to Responses');
+});
