@@ -82,8 +82,16 @@ test('Anthropic SSE: thinking block → reasoning delta', () => {
   const out = [];
   const tee = makeClaudeTee(d => out.push(d));
   _feedChunk(tee, Buffer.from(sseData({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', id: 'b1' } })));
-  _feedChunk(tee, Buffer.from(sseData({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', text: '推理' } })));
+  _feedChunk(tee, Buffer.from(sseData({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: '推理' } })));
   assert.deepEqual(out, [{ type: 'reasoning', text: '推理' }]);
+});
+
+test('Anthropic-compatible SSE: legacy thinking delta.text remains supported', () => {
+  const out = [];
+  const tee = makeClaudeTee(d => out.push(d));
+  _feedChunk(tee, Buffer.from(sseData({ type: 'content_block_start', index: 0, content_block: { type: 'thinking', id: 'b1' } })));
+  _feedChunk(tee, Buffer.from(sseData({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', text: 'legacy' } })));
+  assert.deepEqual(out, [{ type: 'reasoning', text: 'legacy' }]);
 });
 
 test('Anthropic SSE: tool_use block partial_json → tool delta with name + id', () => {
