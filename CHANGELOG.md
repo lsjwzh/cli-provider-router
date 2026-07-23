@@ -6,6 +6,32 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Added
 
+- Token-level delta sidecar (`onDelta`): every proxy branch — Chat→Responses
+  (`chatStreamToResponses`), Responses direct (`proxyResponsesDirect`), Responses
+  compat (`proxyResponsesCompat`), and Claude (Anthropic SSE) — accepts an optional
+  `onDelta(delta, ctx)` callback. As the proxy forwards the upstream stream it
+  extracts token-level deltas and forwards them to the host along with routing
+  context `{providerId, sessionId, role, routeName, model}`: Chat
+  `delta.content`/`reasoning_content`/`tool_calls`, Responses
+  `response.output_text.delta`/`reasoning_summary_text.delta`/`function_call_arguments.delta`,
+  Anthropic `content_block_delta` (text/thinking/tool_use `partial_json`). This
+  lets the host render turns incrementally (opencode-style) instead of waiting
+  for each completion boundary. Previously-discarded reasoning streams (e.g.
+  domestic providers' `reasoning_content`) now surface too. `onDelta` is optional
+  everywhere; when absent, proxy behavior is unchanged.
+
+## [0.4.0] - 2026-07-23
+
+### Added
+
+- Token-level delta sidecar (`onDelta`) across all four proxy branches — see
+  [Unreleased] above. New exports: `newResponsesDeltaTee`, `feedResponsesDelta`
+  (codex); `_testNewUsageTee`, `_testFeedChunk` (claude, test-only).
+
+## [0.3.0] - 2026-07-18
+
+### Added
+
 - Metadata-only proxy liveness events: both the Claude and Codex proxies accept
   an optional `onActivity` callback fired at three moments per turn —
   `request` (forwarding to the upstream started), `first_byte` (first upstream
