@@ -29,6 +29,24 @@ test('Responses input converts tool calls and preserves request controls', () =>
   assert.equal(result.parallel_tool_calls, true);
 });
 
+test('Responses input preserves multimodal message parts for Chat providers', () => {
+  const result = responsesToChat({
+    model: 'chat-model',
+    input: [{
+      type: 'message', role: 'user', content: [
+        { type: 'input_text', text: 'inspect ' },
+        { type: 'input_image', image_url: 'data:image/png;base64,abc', detail: 'low' },
+        { type: 'input_file', file_id: 'file_1', filename: 'contract.pdf' },
+      ],
+    }],
+  });
+  assert.deepEqual(result.messages[0].content, [
+    { type: 'text', text: 'inspect ' },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,abc', detail: 'low' } },
+    { type: 'file', file: { file_id: 'file_1', filename: 'contract.pdf' } },
+  ]);
+});
+
 test('Chat SSE completion accumulates every text delta and cached token details', () => {
   const chunks = [];
   const transform = chatStreamToResponses(chunk => chunks.push(chunk));
@@ -72,4 +90,29 @@ test('onDelta sidecar receives reasoning/text/tool deltas verbatim from upstream
   const sseText = chunks.join('');
   assert.ok(!sseText.includes('思考'), 'reasoning must not appear in the Responses SSE');
   assert.ok(sseText.includes('hi'), 'text still flows through to Responses');
+});
+
+test('Chat SSE keeps interleaved parallel tool calls isolated by index', () => {
+  const chunks = [];
+  const deltas = [];
+  const transform = chatStreamToResponses(chunk => chunks.push(chunk), delta => deltas.push(delta));
+  transform.pushLine(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [
+    { index: 0, id: 'call_a', function: { name: 'read', arguments: '{"path":' } },
+    { index: 1, id: 'call_b', function: { name: 'search', arguments: '{"q":' } },
+  ] } }] })}`);
+  transform.pushLine(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [
+    { index: 1, function: { arguments: '"term"}' } },
+    { index: 0, function: { arguments: '"file"}' } },
+  ] } }] })}`);
+  transform.pushLine(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] })}`);
+  transform.pushLine('data: [DONE]');
+
+  const completed = parseEvents(chunks).find(event => event.type === 'response.completed').data.response;
+  assert.deepEqual(completed.output.map(item => ({ id: item.id, name: item.name, arguments: item.arguments })), [
+    { id: 'call_a', name: 'read', arguments: '{"path":"file"}' },
+    { id: 'call_b', name: 'search', arguments: '{"q":"term"}' },
+  ]);
+  assert.deepEqual(deltas.map(delta => [delta.toolId, delta.tool.arguments]), [
+    ['call_a', '{"path":'], ['call_b', '{"q":'], ['call_b', '"term"}'], ['call_a', '"file"}'],
+  ]);
 });
