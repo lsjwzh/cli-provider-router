@@ -20,6 +20,45 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
   domestic providers' `reasoning_content`) now surface too. `onDelta` is optional
   everywhere; when absent, proxy behavior is unchanged.
 
+## [0.4.5] - 2026-08-28
+
+### Fixed
+
+- Downstream disconnect no longer leaves the upstream request hanging. When the
+  CLI is cancelled or killed mid-turn, both proxies now notice the dead client,
+  emit their terminal usage/activity events exactly once with
+  `errorCode: 'CLIENT_DISCONNECTED'`, and destroy/abort the provider
+  request so the connection (and its billing) is released instead of being
+  drained into a socket nobody is reading. Previously a cancelled turn produced
+  no terminal activity at all, so a host's per-provider producer accounting
+  never drained (`PROVIDER_PRODUCER_NOT_DRAINED`) and a stalled provider
+  wedged the request indefinitely.
+  - `lib/proxy/claude.js`: every terminal path (success, non-2xx,
+    `upRes` aborted/error, connect error, downstream close) now funnels
+    through a single `settleTerminal()`. The once-guard lives on the request,
+    not on the optional `onActivity`/`onUsageEvent` callbacks, which
+    previously early-returned *before* setting their flags — so those flags were
+    never valid terminal markers for a callback-less host. Downstream liveness is
+    registered via `res.once('close')` before the body is buffered, so a
+    client that dies during upload never causes an upstream dial at all.
+  - `lib/proxy/codex.js`: `reportUsage()` gained the same
+    callback-independent once-guard. `proxyResponsesDirect` (direct Responses)
+    had no close detection whatsoever and now aborts the fetch and stops reading;
+    the Chat→Responses bridge broke its read loop on close but left the undici
+    body unconsumed, leaking the provider connection, and now aborts it;
+    `proxyResponsesCompat` already released the upstream but recorded the
+    abandoned turn as a plain `success` and now reports the real cause.
+- `package-lock.json` version is back in sync with `package.json`. The
+  v0.4.4 release commit bumped only `package.json`, leaving the lockfile at
+  0.4.3 and two `release-package.test.js` assertions failing on `main`.
+
+### Notes
+
+- `errorCode` rides on the usage event only. The activity payload keeps its
+  closed metadata key set and its `status: 'success' | 'error'`
+  contract, so `API_VERSION` and the `activityEvents` capability are
+  unchanged.
+
 ## [0.4.0] - 2026-07-23
 
 ### Added
