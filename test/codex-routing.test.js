@@ -467,6 +467,39 @@ async function main() {
       checkSequence(activityEvents, { role: 'sub', providerId: 'sub', providerName: 'Sub Chat' });
     });
 
+    await test('a dead upstream surfaces the OS-level cause instead of bare fetch failed', async () => {
+      // Bind then immediately close a port so connections get ECONNREFUSED —
+      // the exact failure shape that used to collapse into "fetch failed".
+      const dead = await listen(() => {});
+      const deadPort = dead.port;
+      await close(dead.server);
+      const deadProvider = provider({
+        name: 'Dead Upstream', baseUrl: `http://127.0.0.1:${deadPort}`, apiKey: 'dead-secret',
+        model: 'dead-model', wireApi: 'responses',
+      });
+      const deadApp = express();
+      deadApp.use(express.json());
+      mountCodexProxy(deadApp, {
+        getProvider: (_appType, id) => (id === 'dead' ? deadProvider : null),
+        getPort: () => 0,
+        hopCredentials,
+      });
+      const deadProxy = await listen(deadApp);
+      try {
+        const response = await request({
+          port: deadProxy.port,
+          path: '/codex-proxy/dead/session-dead/main/responses',
+          body: { model: 'dead-model', input: [], stream: true },
+        });
+        await new Promise(resolve => setImmediate(resolve));
+        assert.strictEqual(response.status, 200, 'sendFailed keeps SSE 200 so codex renders the message');
+        assert.match(response.body, /fetch upstream failed/, 'failure is labeled');
+        assert.match(response.body, /ECONNREFUSED/, 'OS-level root cause survives the hop');
+      } finally {
+        await close(deadProxy.server);
+      }
+    });
+
     await test('a throwing onActivity callback never disturbs the codex response', async () => {
       const throwingApp = express();
       throwingApp.use(express.json());
