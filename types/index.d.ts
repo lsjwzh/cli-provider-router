@@ -181,6 +181,46 @@ export interface ProxyActivityEvent {
 }
 export interface ProxyMountOptions extends Record<string, unknown> {
   onActivity?: (event: ProxyActivityEvent) => void;
+  // Local request hooks (capability `requestHooks`): the host's data-correction
+  // stage on the hop. `onRequest` runs before the dial, `onUpstreamRejected`
+  // after a non-2xx and may authorize one bounded re-dial with a repaired body.
+  // Both are optional; without them the forwarded request is byte-for-byte what
+  // it was before the hooks existed. See docs/request-hooks.md.
+  onRequest?: (context: ProxyRequestHookContext) => ProxyRequestHookResult | void | Promise<ProxyRequestHookResult | void>;
+  onUpstreamRejected?: (context: ProxyRejectionHookContext) => ProxyRequestHookResult | void | Promise<ProxyRequestHookResult | void>;
+  hookRetryMax?: number;
+  hookTimeoutMs?: number;
+}
+// The body the CLI sent, in the CLI's own protocol (`anthropic-messages` for
+// claude, `openai-responses` for codex), even when the router translates it on
+// the way upstream. `body` is the parsed object when the body is JSON, else the
+// raw string.
+export interface ProxyRequestHookContext {
+  protocol: 'anthropic-messages' | 'openai-responses';
+  mode: 'anthropic-messages' | 'direct-responses' | 'responses-compat' | 'chat-to-responses';
+  providerId: string;
+  providerName?: string;
+  sessionId: string;
+  role: string;
+  roleKind: string;
+  agentRole: string | null;
+  routeName: string;
+  model: string;
+  isStream: boolean;
+  body: Record<string, any> | string;
+  bodyText: string;
+}
+export interface ProxyRejectionHookContext extends ProxyRequestHookContext {
+  status: number;
+  message: string;
+  attempt: number;
+  errorCode: string;
+}
+export interface ProxyRequestHookResult {
+  /** Replacement body: an object is re-serialized, a string is used verbatim. */
+  body?: Record<string, any> | string;
+  /** Rejection hook only: authorize one bounded re-dial with this body. */
+  retry?: boolean;
 }
 export function mountClaudeProxy(app: any, options?: ProxyMountOptions): any;
 export function mountCodexProxy(app: any, options?: ProxyMountOptions): any;

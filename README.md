@@ -264,6 +264,31 @@ CC-Switch takeover, native CLI takeover, or the standalone service.
 
 The standalone service persists normalized usage events and exposes CLI/Web queries. Library hosts can still consume the callback without using CPR's ledger. See [docs/agent-routing.md](docs/agent-routing.md) for route boundaries and current role granularity.
 
+### Local request hooks
+
+A proxy is the last component to see a request before the upstream and the only
+one that sees the upstream reject it. Hosts use that position to correct bodies
+that are only invalid *for the provider of the moment* — history a previous
+upstream accepted (reasoning traces, encrypted blobs, replay ids that no longer
+resolve) that the next one refuses:
+
+```js
+cpr.mountClaudeProxy(app, {
+  getProvider: (type, id) => store.getProvider(type, id),
+  onRequest: (ctx) => ({ body: repairForThisProvider(ctx.body) }),
+  onUpstreamRejected: (ctx) => (repairable(ctx)
+    ? { retry: true, body: repairForThisProvider(ctx.body) }
+    : undefined),
+});
+```
+
+Hooks are optional and inert: with none installed the forwarded request is
+byte-for-byte what it was before the feature existed, and an untouched body is
+never re-encoded. Every hook call is bounded (`hookTimeoutMs`) and its errors are
+swallowed, and repairs are limited to `hookRetryMax` re-dials that happen before
+anything is written to the client. See [docs/request-hooks.md](docs/request-hooks.md)
+for the context and return-value contract.
+
 ## Data and security
 
 - Keep `CPR_HOME` private; it may contain provider credentials and generated CLI configuration.

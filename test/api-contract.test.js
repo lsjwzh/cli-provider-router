@@ -20,7 +20,7 @@ test('package, JavaScript API and capability versions are explicit semver contra
     'directCliTakeover', 'durableConfigStore', 'hostEmbedding', 'httpTarget',
     'managedHopCredentials', 'managedRouteCredential', 'managedService',
     'modelPolicy', 'normalizedUsage', 'protocolProxy', 'providerStore',
-    'spawnEnvironment', 'takeoverLifecycle', 'webConsole',
+    'requestHooks', 'spawnEnvironment', 'takeoverLifecycle', 'webConsole',
   ]);
   for (const version of Object.values(api.CAPABILITIES)) assert.match(version, /^\d+\.\d+$/);
 });
@@ -31,6 +31,10 @@ test('explicit root facade retains the complete 0.2 compatibility surface', () =
     'route-profile-store', 'service', 'usage-ledger', 'settings-store',
     'direct-cli-config', 'sqlite-runtime', 'proxy/codex-transform', 'web-api',
     'model-policy', 'http-target', 'host-embedding',
+    // `proxy/request-hook` is deliberately NOT listed here: the hooks are
+    // reachable through the proxy option surface only (a host passes
+    // onRequest/onUpstreamRejected to mountClaudeProxy / mountCodexProxy), so
+    // nothing from it joins the root facade.
   ];
   const expected = new Set([
     'createStore', 'createClaudeHandler', 'parseClaudeProxyUrl',

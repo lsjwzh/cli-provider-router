@@ -6,6 +6,25 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Added
 
+- Local request hooks (`onRequest`, `onUpstreamRejected`, `hookRetryMax`,
+  `hookTimeoutMs`): the host's data-correction stage on the hop, accepted by
+  `mountClaudeProxy` / `mountCodexProxy` / `createClaudeHandler` /
+  `createCodexHandler`. `onRequest` runs before the dial with the body in the
+  CLIENT's protocol (Anthropic messages for claude, Responses for codex — even
+  when the router translates it for a chat-only provider); `onUpstreamRejected`
+  runs after a non-2xx with the upstream status and body buffered, and
+  `{ retry: true, body }` authorizes one bounded re-dial that happens before
+  anything is written downstream, so the client sees the repaired turn instead
+  of the rejection. Cross-upstream history that a previous provider accepted
+  (reasoning traces, encrypted content, dangling replay ids) can now be repaired
+  where it is actually observed instead of being guessed at spawn time.
+  With no hook installed the forwarded request is byte-for-byte unchanged — an
+  untouched body is never re-encoded — every hook call is bounded
+  (`hookTimeoutMs`) and its errors swallowed, and repairs are counted internally
+  so a caller's own retry counter cannot buy extra attempts. New capability
+  `requestHooks` 1.0; `protocolProxy` 1.1; `API_VERSION` 1.3.0. See
+  [docs/request-hooks.md](docs/request-hooks.md).
+
 - Token-level delta sidecar (`onDelta`): every proxy branch — Chat→Responses
   (`chatStreamToResponses`), Responses direct (`proxyResponsesDirect`), Responses
   compat (`proxyResponsesCompat`), and Claude (Anthropic SSE) — accepts an optional

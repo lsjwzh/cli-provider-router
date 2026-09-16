@@ -198,6 +198,22 @@ const cpr = require('cli-provider-router');
 console.log(cpr.API_VERSION, cpr.CAPABILITIES);
 ```
 
+### 本机请求钩子（request hooks）
+
+代理是请求抵达上游前的最后一站，也是唯一能看到上游**拒绝**它的地方。宿主用这个位置修正「只对当前这家 provider 不合法」的请求体——上一个上游接受过的历史（思考痕迹、加密 blob、已失效的 replay id）会被下一家拒掉：
+
+```js
+cpr.mountClaudeProxy(app, {
+  getProvider: (type, id) => store.getProvider(type, id),
+  onRequest: (ctx) => ({ body: repairForThisProvider(ctx.body) }),
+  onUpstreamRejected: (ctx) => (repairable(ctx)
+    ? { retry: true, body: repairForThisProvider(ctx.body) }
+    : undefined),
+});
+```
+
+钩子是可选的、装不装都一样：不装时转发内容与引入该功能前逐字节相同，没被改动的请求体永远不会被重新编码。每次钩子调用都有超时（`hookTimeoutMs`）且异常被吞掉，重发次数受 `hookRetryMax` 限制，并且都发生在向客户端写出任何内容之前。完整上下文与返回值契约见 [docs/request-hooks.md](docs/request-hooks.md)。
+
 ## 数据与安全
 
 - `CPR_HOME` 可能包含 Provider 凭据和生成配置，必须限制文件权限并排除在版本控制之外。
