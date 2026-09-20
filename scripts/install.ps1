@@ -21,8 +21,8 @@ if (-not (Test-Path -LiteralPath $PackageJson -PathType Leaf)) { throw "package.
 foreach ($Command in @('node', 'npm')) {
     if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) { throw "$Command is required" }
 }
-$NodeMajor = [int]((& node -p 'Number(process.versions.node.split(".")[0])').Trim())
-if ($NodeMajor -lt 18) { throw "Node.js 18+ is required (found $(& node --version))" }
+$NodeSupported = ((& node -p 'const [major,minor]=process.versions.node.split(".").map(Number); Number(major>18||(major===18&&minor>=17))') | Out-String).Trim()
+if ($NodeSupported -ne '1') { throw "Node.js 18.17+ is required (found $(& node --version))" }
 $NodeAbi = ((& node -p 'process.versions.modules') | Out-String).Trim()
 
 $Package = Get-Content -LiteralPath $PackageJson -Raw | ConvertFrom-Json

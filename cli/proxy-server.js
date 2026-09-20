@@ -87,7 +87,7 @@ async function startServer(options = {}) {
     home: paths.home, startedAt,
   }));
   const requireHopCredential = options.requireHopCredential !== false;
-  cpr.mountCodexProxy(proxyApp, { getProvider, getPort: () => port, onUsage: options.onUsage, onUsageEvent, hopCredentials, requireHopCredential });
+  const codexProxy = cpr.mountCodexProxy(proxyApp, { getProvider, getPort: () => port, onUsage: options.onUsage, onUsageEvent, hopCredentials, requireHopCredential });
   cpr.mountClaudeProxy(proxyApp, { getProvider, onUsage: options.onUsage, onUsageEvent, hopCredentials, requireHopCredential });
 
   let proxyServer;
@@ -113,7 +113,7 @@ async function startServer(options = {}) {
     });
     serviceReady = true;
   } catch (error) {
-    await closeHttp(proxyServer).catch(() => {});
+    await Promise.allSettled([closeHttp(proxyServer), codexProxy.close()]);
     throw error;
   }
 
@@ -144,6 +144,7 @@ async function startServer(options = {}) {
     closingPromise = (async () => {
       clearInterval(heartbeat);
       await Promise.all([closeHttp(proxyServer), web.close()]);
+      await codexProxy.close();
       removeFile(paths.servicePidFile);
       removeFile(paths.serviceHealthFile);
       writeJsonAtomic(paths.serviceStateFile, {

@@ -181,6 +181,10 @@ export interface ProxyActivityEvent {
 }
 export interface ProxyMountOptions extends Record<string, unknown> {
   onActivity?: (event: ProxyActivityEvent) => void;
+  /** Observes a per-origin dispatcher replacement; never includes credentials or request data. */
+  onTransportRotate?: (event: { origin: string; reason: 'h2_goaway' | 'invalid_h2_session' | 'invalid_h2_session_retry'; generation: number }) => void;
+  /** Advanced embedding seam. CPR supplies its managed HTTP/2 transport by default. */
+  providerTransport?: { fetch: (input: string | URL, init?: Record<string, any>) => Promise<any>; close?: () => void | Promise<void> };
   // Local request hooks (capability `requestHooks`): the host's data-correction
   // stage on the hop. `onRequest` runs before the dial, `onUpstreamRejected`
   // after a non-2xx and may authorize one bounded re-dial with a repaired body.
@@ -223,10 +227,10 @@ export interface ProxyRequestHookResult {
   retry?: boolean;
 }
 export function mountClaudeProxy(app: any, options?: ProxyMountOptions): any;
-export function mountCodexProxy(app: any, options?: ProxyMountOptions): any;
+export function mountCodexProxy(app: any, options?: ProxyMountOptions): { close(): Promise<void> };
 export function mountCcSwitchGateway(app: any, options?: Record<string, unknown>): any;
 export function createClaudeHandler(options?: ProxyMountOptions): (req: IncomingMessage, res: ServerResponse) => void;
-export function createCodexHandler(options?: ProxyMountOptions): (req: IncomingMessage, res: ServerResponse) => void;
+export function createCodexHandler(options?: ProxyMountOptions): ((req: IncomingMessage, res: ServerResponse, route: { providerId: string; sessionId?: string; role?: string }) => Promise<void>) & { close(): Promise<void> };
 export function createWebApp(options?: Record<string, unknown>): any;
 export function createWebServer(options?: Record<string, unknown>): any;
 

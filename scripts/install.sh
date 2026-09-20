@@ -57,10 +57,10 @@ done
 SOURCE="$(cd -- "$SOURCE" && pwd -P)"
 [[ -f "$SOURCE/package.json" ]] || { echo "error: package.json not found under $SOURCE" >&2; exit 2; }
 
-command -v node >/dev/null || { echo "error: Node.js 18+ is required" >&2; exit 1; }
+command -v node >/dev/null || { echo "error: Node.js 18.17+ is required" >&2; exit 1; }
 command -v npm >/dev/null || { echo "error: npm is required" >&2; exit 1; }
-NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
-((NODE_MAJOR >= 18)) || { echo "error: Node.js 18+ is required (found $(node --version))" >&2; exit 1; }
+NODE_SUPPORTED="$(node -p 'const [major,minor]=process.versions.node.split(".").map(Number); Number(major>18||(major===18&&minor>=17))')"
+[[ "$NODE_SUPPORTED" == "1" ]] || { echo "error: Node.js 18.17+ is required (found $(node --version))" >&2; exit 1; }
 
 PACKAGE_VERSION="$(node -e 'const p=require(process.argv[1]); process.stdout.write(String(p.version))' "$SOURCE/package.json")"
 [[ "$PACKAGE_VERSION" == "$VERSION" ]] || {

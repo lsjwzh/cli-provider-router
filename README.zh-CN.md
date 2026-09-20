@@ -4,7 +4,7 @@
 
 [English](README.md) · [架构](docs/architecture.md) · [安全策略](SECURITY.md) · [参与贡献](CONTRIBUTING.md)
 
-> 项目状态：**0.3.x 源码发布版**。npm 尚未发布。Provider 路由、双端口托管服务、本地 Web 控制台、可逆 CC-Switch 接管、可逆原生 CLI 配置接管、路由配置和用量账本均已实现并有测试。
+> 项目状态：**0.5.x 源码发布版**。npm 尚未发布。Provider 路由、双端口托管服务、本地 Web 控制台、可逆 CC-Switch 接管、可逆原生 CLI 配置接管、路由配置和用量账本均已实现并有测试。
 
 ## 为什么需要 CPR
 
@@ -43,6 +43,8 @@
 ## 安装
 
 CPR 自带独立的安装、升级和卸载脚本。它作为独立应用安装，绝不会把 CPR 数据放进 MultiCC 仓库、worktree 或数据目录，也不会复用它们。
+
+要求 Node.js 18.17 或更高版本。
 
 ### 当前支持方式：从固定源码版本安装
 

@@ -4,7 +4,7 @@ Route Claude Code and Codex to different upstream providers without changing the
 
 [简体中文](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
-> Project status: **0.3.x source release**. npm is not published yet. Provider routing, the dual-port managed service, local Web console, reversible CC-Switch takeover, reversible native CLI configuration takeover, route profiles, and usage ledger are implemented and covered by tests.
+> Project status: **0.5.x source release**. npm is not published yet. Provider routing, the dual-port managed service, local Web console, reversible CC-Switch takeover, reversible native CLI configuration takeover, route profiles, and usage ledger are implemented and covered by tests.
 
 ## Why CPR
 
@@ -43,6 +43,8 @@ Native CLI ownership, managed files, and force-restore risks are documented in [
 ## Installation
 
 CPR ships project-owned install, upgrade, and uninstall scripts. They install CPR as an independent application and never place CPR data inside MultiCC or reuse MultiCC's worktree/data directories.
+
+Node.js 18.17 or newer is required.
 
 ### Current supported method: fixed source checkout
 

@@ -4,6 +4,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-21
+
+### Fixed
+
+- Codex provider calls now use CPR-owned, per-origin Undici dispatchers while
+  retaining HTTP/2 negotiation. A destroyed HTTP/2 session or GOAWAY replaces
+  only the affected origin's pool. `ERR_HTTP2_INVALID_SESSION` is retried once
+  only when the request body is safely replayable; ambiguous transport failures
+  are never replayed. Embedded and standalone hosts can close the transport
+  explicitly during shutdown, and rotation events contain metadata only.
+
+## [0.5.0] - 2026-09-16
+
 ### Added
 
 - Local request hooks (`onRequest`, `onUpstreamRejected`, `hookRetryMax`,
@@ -154,5 +167,7 @@ The version exists in `package.json` for development and source installation. It
 - Claude and Codex proxy handlers and Responses-to-Chat transformation.
 - Route helpers for main/sub-agent provider selection.
 
-[Unreleased]: https://github.com/lsjwzh/cli-provider-router/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/lsjwzh/cli-provider-router/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/lsjwzh/cli-provider-router/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/lsjwzh/cli-provider-router/compare/v0.4.6...v0.5.0
 [0.3.0]: https://github.com/lsjwzh/cli-provider-router/releases/tag/v0.3.0
